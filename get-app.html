@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Get Histatu Runner — the in-game companion app</title>
+<style>
+  *{box-sizing:border-box}
+  html{color-scheme:light dark}
+  :root{
+    --bg: light-dark(#f6f5f1,#141416);
+    --card: light-dark(#ffffff,#20232a);
+    --card2: light-dark(#eeede8,#2a2e37);
+    --text: light-dark(#1c1b17,#f2f1eb);
+    --text2: light-dark(#57554d,#aab1bd);
+    --text3: light-dark(#8c8a7f,#7d838f);
+    --border: light-dark(rgba(28,27,23,.12),rgba(242,241,235,.13));
+    --border2: light-dark(rgba(28,27,23,.22),rgba(242,241,235,.22));
+    --accent: light-dark(#a8302f,#ec8585);
+    --good: light-dark(#3f6212,#a3e635); --warn: light-dark(#8f5409,#e6a85a);
+    --shadow: light-dark(0 1px 3px rgba(0,0,0,.05),0 1px 3px rgba(0,0,0,.35));
+  }
+  body{margin:0;background:var(--bg);color:var(--text);line-height:1.55;-webkit-font-smoothing:antialiased;
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+  .wrap{max-width:860px;margin:0 auto;padding:28px 20px 60px}
+  a.back{font-size:13px;color:var(--text2);text-decoration:none}
+  a.back:hover{color:var(--text)}
+  h1{font-size:26px;letter-spacing:-.02em;margin:14px 0 4px}
+  .sub{color:var(--text2);font-size:15px;margin:0 0 6px}
+  .ver{display:inline-block;font-size:12px;color:var(--text3);border:.5px solid var(--border2);
+    border-radius:999px;padding:2px 10px;margin:8px 0 22px}
+  .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px}
+  .card{background:var(--card);border:.5px solid var(--border);border-radius:14px;box-shadow:var(--shadow);padding:20px}
+  .card h2{font-size:17px;margin:0 0 2px}
+  .card .meta{font-size:12px;color:var(--text3);margin-bottom:12px}
+  .dl{display:inline-block;font-size:14.5px;font-weight:650;text-decoration:none;color:light-dark(#fff,#1c1b17);
+    background:var(--accent);border-radius:9px;padding:9px 18px;margin:2px 0 14px}
+  .dl:hover{filter:brightness(1.07)}
+  .dl.off{background:var(--card2);color:var(--text3);pointer-events:none}
+  .steps{font-size:13.5px;color:var(--text2);margin:0;padding-left:18px}
+  .steps li{margin:5px 0}
+  .steps code{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12.5px;background:var(--card2);
+    border-radius:5px;padding:1px 6px}
+  .note{font-size:12.5px;color:var(--text3);border-left:3px solid var(--warn);padding:2px 0 2px 10px;margin-top:14px}
+  .what{background:var(--card);border:.5px solid var(--border);border-radius:14px;padding:16px 20px;margin:26px 0 0;
+    font-size:13.5px;color:var(--text2)}
+  .what b{color:var(--text)}
+  #hint{font-size:13px;color:var(--warn);margin-top:16px;display:none}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <a class="back" href="index.html">← Back to the map</a>
+  <h1>📥 Histatu Runner</h1>
+  <p class="sub">The in-game companion app: press your open key on a chest and it's logged to the
+  shared map — plus route racing (a stopwatch that counts your opens against a route), cooldown tracking, and leaderboards.</p>
+  <span class="ver" id="ver">checking latest version…</span>
+
+  <div class="cards">
+    <div class="card">
+      <h2>🪟 Windows — Full <span style="font-size:11px;color:var(--good);border:.5px solid var(--border2);border-radius:999px;padding:1px 8px;vertical-align:middle">recommended</span></h2>
+      <div class="meta" id="winMeta">single .exe — no install, no Python</div>
+      <a class="dl" id="winBtn" href="api/download">⬇ Download Full</a>
+      <ol class="steps">
+        <li>Put <code>HistatuRunner.exe</code> in its own folder (it saves settings next to itself) and double-click it.</li>
+        <li>First launch shows <b>“Windows protected your PC”</b> — that's SmartScreen warning about a new unsigned
+            app, not malware. Click <b>More info → Run anyway</b> (one time only).</li>
+        <li>In game, press <b>F7</b> until the WORLD debug panel shows, enter your IGN in the app, and open chests.</li>
+      </ol>
+      <div class="note">Adds an <b>optional</b> “Report a detection issue” tool — if a chest won't read, you can send a
+        short, panel-region-only diagnostic (private, deleted after review). It only ever runs when you start it.</div>
+    </div>
+
+    <div class="card">
+      <h2>🪟 Windows — Lite</h2>
+      <div class="meta" id="liteMeta">single .exe — nothing ever leaves your PC</div>
+      <a class="dl" id="liteBtn" href="api/download?edition=lite">⬇ Download Lite</a>
+      <ol class="steps">
+        <li>Same chest-logging, route racing and cooldown tracking as Full.</li>
+        <li><b>No detection-report tool</b> — Lite never captures or sends any screenshot or log, at all.</li>
+        <li>If you ever want to send a diagnostic for a chest that won't read, grab the Full version instead.</li>
+      </ol>
+      <div class="note">Pick Lite if you'd rather have zero diagnostic capture in the app. Everything else is identical.</div>
+    </div>
+
+    <div class="card">
+      <h2>🐧 Linux</h2>
+      <div class="meta" id="linMeta">source zip — Python 3.10+, X11 &amp; Wayland</div>
+      <a class="dl" id="linBtn" href="api/download?os=linux">⬇ Download for Linux</a>
+      <ol class="steps">
+        <li>Unzip, then run <code>./run.sh</code> — it checks and installs what's needed for your display server.</li>
+        <li><b>X11:</b> <code>pip install pillow pytesseract pynput</code> + the <code>tesseract-ocr</code> package
+            (optional <code>xdotool</code> for docking).</li>
+        <li><b>Wayland</b> (Hyprland/Sway): <code>grim</code> + <code>pip install evdev</code>, and add yourself to the
+            <code>input</code> group: <code>sudo usermod -aG input "$USER"</code> (log out/in).</li>
+      </ol>
+      <div class="note">No prebuilt Linux binary — it runs from source with a tiny dependency set.</div>
+    </div>
+  </div>
+
+  <div class="what">
+    <b>Full vs Lite:</b> identical chest-logging, route racing, cooldown tracking and leaderboards. The only
+    difference is that <b>Full</b> includes an optional, you-start-it detection-issue reporter (a brief screenshot
+    of just the F7 panel region, sent privately and deleted after review) to help fix hard-to-read chests;
+    <b>Lite</b> leaves that out entirely and never captures or sends anything.
+  </div>
+  <div class="what" style="margin-top:14px">
+    <b>What it does:</b> logs every chest you find to the shared map (or submits it for review),
+    records loot routes and times your runs of them, learns real travel times between chests,
+    tracks the daily 8&nbsp;PM&nbsp;Eastern chest reset per player, and keeps route leaderboards —
+    all synced with the <a href="index.html" style="color:var(--accent)">shared dungeon map</a>.
+    Both builds read only your own screen (the F7 panel) — no mods, no injection, nothing touches the game —
+    and check for updates on launch.
+  </div>
+  <div class="what" style="margin-top:14px;border-color:var(--accent)">
+    <b>🔓 Fully open source — don't take our word for any of this.</b>
+    The complete source for the app, this website, and the server is public at
+    <a href="https://github.com/blakebiz-dev/Histatu-Dungeon-Companion" style="color:var(--accent)">github.com/blakebiz-dev/Histatu-Dungeon-Companion</a>
+    (MIT licensed). The <code style="font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12.5px;background:var(--card2);border-radius:5px;padding:1px 6px">.exe</code>
+    downloads above are built automatically by GitHub Actions from that exact tagged source — you can read
+    every line the app runs (<a href="https://github.com/blakebiz-dev/Histatu-Dungeon-Companion/blob/main/companion/histatu-capture/histatu_runner.py" style="color:var(--accent)">it's one Python file</a>),
+    audit the build workflow, or build it yourself.
+    <br><br>
+    <b>What it never does:</b> no game mods, no injection, no memory reading, no packet sniffing, no game-file
+    access. It works entirely by reading the F7 debug panel <b>off your own screen</b> with OCR, and the only
+    things it shares are what you contribute to the community map: chest locations, your opens (for your cooldown
+    tracking), travel times, and route completion times. The
+    <a href="https://github.com/blakebiz-dev/Histatu-Dungeon-Companion#readme" style="color:var(--accent)">README</a>
+    walks through the whole security model.
+  </div>
+  <div id="hint">⚠ Downloads are still being set up — if a button gives an error, check back shortly.</div>
+</div>
+<script>
+  fetch("api/download?meta=1").then(function(r){
+    if(!r.ok)throw 0;return r.json();
+  }).then(function(m){
+    document.getElementById("ver").textContent="latest version: "+(m.tag||"?");
+    function mb(a){return a&&a.size?" · "+(a.size/1048576).toFixed(1)+" MB":"";}
+    var full=m.full||m.windows;  // back-compat with the pre-editions meta shape
+    if(full)document.getElementById("winMeta").textContent="single .exe — no install, no Python"+mb(full);
+    if(m.lite)document.getElementById("liteMeta").textContent="single .exe — nothing ever leaves your PC"+mb(m.lite);
+    else{var lb=document.getElementById("liteBtn");lb.classList.add("off");lb.textContent="Lite build coming with the next release";}
+    if(m.linux)document.getElementById("linMeta").textContent="source zip — Python 3.10+, X11 & Wayland"+mb(m.linux);
+    if(!m.linux){var b=document.getElementById("linBtn");b.classList.add("off");b.textContent="Linux zip coming with the next release";}
+  }).catch(function(){
+    document.getElementById("ver").textContent="";
+    document.getElementById("hint").style.display="block";
+  });
+</script>
+</body>
+</html>

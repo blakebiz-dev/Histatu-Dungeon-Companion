@@ -1,0 +1,15 @@
+capture_config.json
+capture_debug.png
+__pycache__/
+
+# Nuitka build output
+build/
+build_log.txt
+*.exe
+*.build/
+*.dist/
+*.onefile-build/
+
+# regenerable from make_icon.py (icon.ico is kept as the committed source of truth)
+icon.png
+nuitka-crash-report.xml

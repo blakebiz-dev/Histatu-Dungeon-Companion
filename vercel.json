@@ -1,0 +1,14 @@
+{
+  "redirects": [
+    {
+      "source": "/tools/dungeon-loot-map",
+      "destination": "/",
+      "permanent": true
+    },
+    {
+      "source": "/tools/dungeon-loot-map/:path*",
+      "destination": "/:path*",
+      "permanent": true
+    }
+  ]
+}

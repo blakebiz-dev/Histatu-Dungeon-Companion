@@ -1,0 +1,2915 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dungeon Loot Map — shared chest & route tracker</title>
+<style>
+  *{box-sizing:border-box}
+  html{color-scheme:light dark}
+  html[data-theme="light"]{color-scheme:light}
+  html[data-theme="dark"]{color-scheme:dark}
+  :root{
+    --bg: light-dark(#f6f5f1,#141416);
+    --card: light-dark(#ffffff,#20232a);
+    --card2: light-dark(#eeede8,#2a2e37);
+    --text: light-dark(#1c1b17,#f2f1eb);
+    --text2: light-dark(#57554d,#aab1bd);
+    --text3: light-dark(#8c8a7f,#7d838f);
+    --border: light-dark(rgba(28,27,23,.12),rgba(242,241,235,.13));
+    --border2: light-dark(rgba(28,27,23,.22),rgba(242,241,235,.22));
+    --accent: light-dark(#a8302f,#ec8585);
+    --shadow: light-dark(0 1px 3px rgba(0,0,0,.05),0 1px 3px rgba(0,0,0,.35));
+    --mapbg:#0d1420;
+    --chest:#f2c832;
+    --gsmall:#f14c4c; --gmed:#f0883e; --glarge:#a371f7;
+    --mob:#0b0b0d; --route:#ffd34d; --teleport:#38bdf8;
+    --good: light-dark(#3f6212,#a3e635); --warn: light-dark(#8f5409,#e6a85a);
+    --bad: light-dark(#b91c1c,#f87171);
+  }
+  body{margin:0;background:var(--bg);color:var(--text);line-height:1.5;-webkit-font-smoothing:antialiased;
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    height:100vh;display:flex;flex-direction:column;overflow:hidden}
+  .mono{font-family:ui-monospace,Menlo,Consolas,monospace;font-variant-numeric:tabular-nums}
+
+  header{display:flex;align-items:center;gap:14px;padding:9px 16px;border-bottom:.5px solid var(--border);flex:none}
+  header .back{font-size:13px;color:var(--text2);text-decoration:none}
+  header .back:hover{color:var(--text)}
+  header h1{font-size:16px;font-weight:650;margin:0;letter-spacing:-.01em}
+  header .sub{font-size:12px;color:var(--text3)}
+  header .spacer{flex:1}
+  .sync{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--text2)}
+  .sync .dot{width:8px;height:8px;border-radius:50%}
+  .sync .dot.on{background:var(--good)} .sync .dot.off{background:var(--warn)}
+  .themebtn{width:34px;height:34px;display:flex;align-items:center;justify-content:center;font-size:15px;
+    border:.5px solid var(--border2);border-radius:8px;background:var(--card);color:var(--text);cursor:pointer}
+  .themebtn:hover{background:var(--card2)}
+
+  .toolbar{display:flex;align-items:center;gap:8px;padding:8px 14px;border-bottom:.5px solid var(--border);flex:none;flex-wrap:wrap}
+  .tgroup{display:inline-flex;background:var(--card2);border:.5px solid var(--border);border-radius:9px;padding:3px;gap:2px}
+  .tgroup button{font:inherit;font-size:12.5px;font-weight:600;border:0;background:transparent;color:var(--text2);
+    padding:6px 11px;border-radius:6px;cursor:pointer;display:inline-flex;align-items:center;gap:5px}
+  .tgroup button.on{background:var(--card);color:var(--text);box-shadow:var(--shadow)}
+  .tgroup button:hover:not(.on){color:var(--text)}
+  .chk{display:inline-flex;align-items:center;gap:5px;font-size:12px;color:var(--text2);cursor:pointer;user-select:none}
+  .chk input{accent-color:var(--accent)}
+  .fgroup{display:inline-flex;align-items:center;gap:11px;background:var(--card2);border:.5px solid var(--border);border-radius:9px;padding:5px 11px}
+  .tbar-div{width:1px;align-self:stretch;min-height:20px;background:var(--border2);margin:0 2px}
+  /* ⋯ More: the overflow home for stats/backup/editor tools, so the main bar stays calm */
+  .morewrap{position:relative;display:inline-block}
+  .moremenu{position:absolute;right:0;top:calc(100% + 6px);z-index:70;background:var(--card);
+    border:.5px solid var(--border2);border-radius:10px;box-shadow:0 6px 24px rgba(0,0,0,.25);
+    padding:5px;display:flex;flex-direction:column;min-width:196px}
+  .moremenu[hidden]{display:none}
+  .moremenu .act{border:0;background:transparent;text-align:left;width:100%;border-radius:7px;padding:7px 10px}
+  .moremenu .act:hover{background:var(--card2)}
+  .moremenu .mdiv{height:1px;background:var(--border);margin:4px 6px}
+  .attn{box-shadow:0 0 0 2px var(--warn) !important}
+  .act{font:inherit;font-size:12.5px;padding:6px 11px;border:.5px solid var(--border2);border-radius:8px;background:var(--card);color:var(--text);cursor:pointer}
+  a.act{text-decoration:none;display:inline-flex;align-items:center}
+  .act:hover{background:var(--card2)}
+  .act.primary{background:var(--accent);border-color:var(--accent);color:light-dark(#fff,#1c1b17);font-weight:600}
+  .act.danger{color:var(--accent)}
+  .act:disabled{opacity:.5;cursor:default}
+
+  .body{flex:1;display:flex;min-height:0}
+  .viewport{flex:1;position:relative;overflow:hidden;background:var(--mapbg);touch-action:none;cursor:grab}
+  .viewport.calibrating{cursor:crosshair}
+  .viewport.placing{cursor:crosshair}
+  .viewport.panning{cursor:grabbing}
+  .world{position:absolute;top:0;left:0;transform-origin:0 0}
+  .world img.mapimg{display:block;width:100%;height:100%;pointer-events:none;-webkit-user-drag:none;user-select:none}
+  svg.routes{position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;overflow:visible}
+  svg.routes .leg{stroke:var(--route);stroke-width:3;fill:none;vector-effect:non-scaling-stroke;stroke-linecap:round;opacity:.9}
+  svg.routes .leg.draft{stroke-dasharray:7 6}
+  svg.routes text{fill:#fff;font-size:11px;paint-order:stroke;stroke:#000;stroke-width:3px;font-family:ui-monospace,monospace}
+
+  .marker{position:absolute;transform:translate(-50%,-50%) scale(var(--iz,1));transform-origin:center;cursor:pointer;
+    width:22px;height:22px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;
+    color:#fff;border:2px solid rgba(255,255,255,.9);box-shadow:0 1px 4px rgba(0,0,0,.6);z-index:2}
+  .marker.mk-chest{border-radius:6px;background:var(--chest);color:#3a2c00}
+  .marker.mk-pending{border-radius:50%;background:color-mix(in srgb,var(--chest) 22%,transparent);color:var(--chest);border:2px dashed var(--chest)}
+  .marker.mk-pending-rm{border-radius:50%;background:color-mix(in srgb,var(--bad) 18%,transparent);color:var(--bad);border:2px dashed var(--bad)}
+  .marker.mk-pending-zn{border-radius:50%;background:color-mix(in srgb,var(--warn) 20%,transparent);color:var(--warn);border:2px dashed var(--warn)}
+  .arealabel{position:absolute;transform:translate(-50%,-50%);pointer-events:auto;text-align:center;
+    font-size:11.5px;font-weight:700;letter-spacing:.02em;padding:3px 9px;border-radius:8px;
+    background:color-mix(in srgb,var(--bg) 72%,transparent);border:.5px solid var(--border2);white-space:nowrap}
+  .arealabel .au{display:block;font-size:10px;font-weight:500;color:var(--text3)}
+  .viewport.areadrawing{cursor:crosshair}
+  .areapt{position:absolute;width:14px;height:14px;border-radius:50%;transform:translate(-50%,-50%);
+    background:var(--accent);border:2.5px solid light-dark(#fff,#1c1b17);cursor:grab;pointer-events:auto;
+    box-shadow:0 1px 4px rgba(0,0,0,.4)}
+  .areapt.first{background:light-dark(#fff,#1c1b17);border-color:var(--accent)}
+  .areamenu{position:fixed;z-index:60;background:var(--card);border:.5px solid var(--border2);
+    border-radius:10px;box-shadow:var(--shadow);padding:5px;display:flex;flex-direction:column;min-width:150px}
+  .areamenu button{font:inherit;font-size:13px;text-align:left;border:0;background:transparent;
+    color:var(--text);padding:7px 10px;border-radius:7px;cursor:pointer}
+  .areamenu button:hover{background:var(--card2)}
+  body.viewer .ed-only{display:none !important}
+  #mOverlay.ro .fld,#mOverlay.ro .seg{opacity:.7;pointer-events:none}
+  #mOverlay.ro #mSave,#mOverlay.ro #mDelete,#mOverlay.ro #mFromCoords{display:none}
+  #verTable tr.sel{background:color-mix(in srgb,var(--accent) 16%,transparent)}
+  #verTable td,#verTable th{padding:6px 8px;font-size:12.5px;vertical-align:top}
+  .stars{display:inline-flex;gap:1px;font-size:19px;line-height:1;cursor:pointer;user-select:none}
+  .stars .st{color:var(--border2)}
+  .stars .st.on{color:#f2c14e}
+  .rlist-stars{color:#f2c14e;font-size:12px}
+  .rgrade{font-weight:700;letter-spacing:.2px;white-space:nowrap;cursor:help}
+  #rComments .rc{font-size:12px;padding:4px 0;border-top:.5px solid var(--border);color:var(--text2)}
+  #rComments .rc .who{color:var(--text3)}
+  .marker.mk-cluster{border-radius:50%;background:var(--chest);color:#3a2c00;width:26px;height:26px;font-size:12px;border-style:dashed}
+  .marker.mk-cluster.open{background:color-mix(in srgb,var(--chest) 25%,transparent);color:var(--chest);border:2px dashed var(--chest)}
+  .marker.mk-group{border-radius:50%;width:24px;height:24px}
+  .marker.mk-mob{border-radius:50%;background:var(--mob);border-color:#fff}
+  .marker.mk-teleport{border-radius:50%;background:var(--teleport);color:#04263a;border-color:#fff}
+  .marker.sel{outline:3px solid #fff;outline-offset:2px}
+  .marker.cooling{opacity:.32;filter:grayscale(.7)}
+  .marker.routed{box-shadow:0 0 0 3px var(--route),0 1px 4px rgba(0,0,0,.6)}
+  .marker .rn{position:absolute;top:-9px;right:-9px;background:var(--route);color:#3a2c00;border-radius:50%;
+    width:15px;height:15px;font-size:9px;display:flex;align-items:center;justify-content:center;border:1px solid #000}
+  .g-small{background:var(--gsmall)} .g-med{background:var(--gmed)} .g-large{background:var(--glarge)}
+
+  /* help */
+  #helpModal{max-width:660px}
+  .help h3{font-size:13px;margin:18px 0 5px;color:var(--text);letter-spacing:-.01em}
+  .help h3:first-child{margin-top:2px}
+  .help .lead{color:var(--text2);font-size:12.5px;margin:0 0 6px}
+  .help .hrow{display:flex;gap:12px;padding:6px 0;border-top:.5px solid var(--border);font-size:12.5px;align-items:baseline}
+  .help .hk{flex:0 0 144px;font-weight:600;color:var(--text)}
+  .help .hd{color:var(--text2);flex:1;min-width:0}
+  .help .ed{display:inline-block;color:var(--accent);border:.5px solid var(--accent);border-radius:5px;
+    font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;padding:0 4px;margin-left:6px;vertical-align:1px}
+  @media (max-width:560px){.help .hrow{flex-direction:column;gap:2px}.help .hk{flex-basis:auto}}
+
+  /* side panel */
+  .side{width:290px;flex:none;border-left:.5px solid var(--border);display:flex;flex-direction:column;background:var(--card);min-height:0}
+  .side .sechead{font-size:11px;text-transform:uppercase;letter-spacing:.07em;color:var(--text3);font-weight:700;padding:12px 14px 6px}
+  .side .scroll{overflow-y:auto;flex:1;min-height:0}
+  .legend{padding:2px 14px 10px;font-size:12px;color:var(--text2)}
+  .legend .lrow{display:flex;align-items:center;gap:8px;margin:5px 0}
+  .legend .sw{width:15px;height:15px;border-radius:4px;border:1.5px solid rgba(255,255,255,.85);flex:none}
+  .legend .sw.circ{border-radius:50%}
+  .routebox{border-top:.5px solid var(--border);display:flex;flex-direction:column;min-height:0}
+  .routelist{padding:0 10px 10px}
+  .routeitem{border:.5px solid var(--border);border-radius:9px;padding:9px 11px;margin-top:8px;background:var(--bg)}
+  .routeitem .rt{display:flex;align-items:center;gap:7px;justify-content:space-between}
+  .routeitem .rname{font-weight:650;font-size:13px}
+  .routeitem .rmeta{font-size:11.5px;color:var(--text3);margin-top:2px}
+  .routeitem.active{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent) inset}
+  .pill{font-size:10px;padding:2px 7px;border-radius:99px;border:.5px solid var(--border2);color:var(--text2)}
+  .pill.pub{color:var(--good);border-color:var(--good)}
+  .pill.draft{color:var(--warn);border-color:var(--warn)}
+  .rbtns{display:flex;gap:6px;margin-top:8px;flex-wrap:wrap}
+  .rbtns .act{font-size:11.5px;padding:4px 9px}
+  .tinylink{font:inherit;font-size:11.5px;border:0;background:none;color:var(--accent);cursor:pointer;padding:0;text-decoration:underline}
+
+  /* hover tooltip */
+  .tip{position:fixed;z-index:40;background:var(--card);border:.5px solid var(--border2);border-radius:8px;
+    box-shadow:0 6px 22px rgba(0,0,0,.35);padding:7px 10px;font-size:12px;pointer-events:none;max-width:240px;display:none}
+  .tip b{font-weight:650}
+  .tip .co{color:var(--text3);font-size:11px}
+
+  /* modal */
+  .overlay{position:fixed;inset:0;background:rgba(0,0,0,.5);display:none;align-items:flex-start;justify-content:center;padding:5vh 16px;z-index:60;overflow:auto}
+  .overlay.open{display:flex}
+  .modal{background:var(--card);border:.5px solid var(--border2);border-radius:16px;box-shadow:0 18px 50px rgba(0,0,0,.4);width:100%;max-width:440px;padding:20px 22px}
+  .modal.wide{max-width:min(94vw,1100px)}
+  .modal h2{font-size:16px;margin:0 0 14px;font-weight:650}
+  .fld{margin-bottom:12px}
+  .fld label{display:block;font-size:12px;color:var(--text2);margin-bottom:5px}
+  .fld input,.fld select,.fld textarea{width:100%;height:34px;padding:0 9px;font:inherit;font-size:13.5px;
+    border:.5px solid var(--border2);border-radius:7px;background:var(--card);color:var(--text)}
+  .fld textarea{height:auto;padding:7px 9px;resize:vertical;min-height:38px}
+  .fld input[type=number]{font-family:ui-monospace,monospace;text-align:right}
+  .fld input:focus-visible,.fld select:focus-visible,.fld textarea:focus-visible{outline:none;border-color:var(--text3);box-shadow:0 0 0 3px var(--card2)}
+  .row3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}
+  .seg{display:inline-flex;background:var(--card2);border:.5px solid var(--border);border-radius:9px;padding:3px;gap:2px;flex-wrap:wrap}
+  .seg button{font:inherit;font-size:12.5px;font-weight:600;border:0;background:transparent;color:var(--text2);padding:6px 12px;border-radius:7px;cursor:pointer}
+  .seg button.on{background:var(--card);color:var(--text);box-shadow:var(--shadow)}
+  .mbtns{display:flex;gap:9px;margin-top:16px;align-items:center}
+  .mbtns .spacer{flex:1}
+  .mhint{font-size:11.5px;color:var(--text3);margin-top:8px}
+  .mhint.err{color:var(--accent)}
+
+  /* loot stats + table editor */
+  .tscroll{overflow-x:auto}
+  table.stats{width:100%;border-collapse:collapse;font-size:12.5px;min-width:560px}
+  .stats th{font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--text3);font-weight:700;text-align:right;padding:8px 10px;border-bottom:.5px solid var(--border2);white-space:nowrap;position:sticky;top:0;background:var(--card)}
+  .stats th:first-child{text-align:left}
+  .stats td{padding:6px 10px;text-align:right;border-bottom:.5px solid var(--border);white-space:nowrap}
+  .stats td:first-child{text-align:left;font-weight:600}
+  .stats tr:last-child td{border-bottom:none}
+  table.rates{width:100%;border-collapse:collapse;font-size:12.5px;min-width:520px}
+  .rates th{font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--text3);font-weight:700;text-align:left;padding:5px 6px}
+  .rates td{padding:3px 3px}
+  .rates input{height:28px;font-size:12px;padding:0 8px;width:100%;border:.5px solid var(--border2);border-radius:6px;background:var(--card);color:var(--text)}
+  .rates input[type=number]{font-family:ui-monospace,monospace;text-align:right}
+  .rates td.num{width:92px}
+  .rates td.rm{width:32px}
+  .rates td.rm button{width:26px;height:26px;border-radius:6px;border:.5px solid var(--border2);background:var(--card);color:var(--text3);cursor:pointer}
+  .rates td.rm button:hover{color:var(--accent);border-color:var(--accent)}
+  .runchip{display:flex;align-items:center;gap:7px;font-size:12.5px}
+  .runchip .sw{width:13px;height:13px;border-radius:4px;border:1.5px solid rgba(255,255,255,.85);flex:none}
+  .runchip input{width:64px;height:28px;font-size:12px;padding:0 7px;text-align:right;font-family:ui-monospace,monospace;border:.5px solid var(--border2);border-radius:6px;background:var(--card);color:var(--text)}
+  .toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:var(--card);border:.5px solid var(--border2);
+    border-radius:10px;padding:10px 18px;font-size:13px;box-shadow:0 8px 30px rgba(0,0,0,.3);opacity:0;pointer-events:none;transition:opacity .2s;z-index:70}
+  .toast.show{opacity:1}
+  .empty{padding:14px;color:var(--text3);font-size:12.5px}
+  @media (max-width:720px){.side{display:none}}
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1>Dungeon Loot Map</h1>
+    <div class="sub">Shared chest, group &amp; mob tracker with loot routes</div>
+  </div>
+  <div class="spacer"></div>
+  <div class="sync"><span class="dot off" id="syncDot"></span><span id="syncText">Connecting…</span></div>
+  <a class="act" href="get-app.html" title="Download Histatu Runner — the in-game overlay that logs chests & times your route runs (Windows & Linux)">📥 Get the app</a>
+  <button class="act" id="editorBtn" title="Sign in with your Hytale account to contribute">Sign in</button>
+  <button class="act" id="helpBtn" title="What does everything do? — a guide to every tool">❓ Help</button>
+  <button class="act" id="refreshBtn" title="Reload the shared map now">↻</button>
+  <button class="themebtn" id="theme" aria-label="Toggle theme" title="Toggle theme">◐</button>
+</header>
+
+<div class="toolbar">
+  <div class="tgroup" id="tools" role="group" aria-label="Tool">
+    <button data-tool="select" class="on" title="Select / move / pan">✋ Select</button>
+    <button class="ed-only" data-tool="chest" title="Add a chest">📦 Chest</button>
+    <button class="ed-only" data-tool="group" title="Add a chest group">⬡ Group</button>
+    <button class="ed-only" data-tool="mob" title="Add a mob spawn">☠ Mob</button>
+    <button class="ed-only" data-tool="teleport" title="Add a teleport spot">🌀 Teleport</button>
+    <button class="ed-only" data-tool="route" title="Build a route by clicking chests">🧭 Route</button>
+  </div>
+  <span class="fgroup" title="Show or hide each kind of pin">
+    <label class="chk"><input type="checkbox" id="fChest" checked> Chests</label>
+    <label class="chk"><input type="checkbox" id="fGroup" checked> Groups</label>
+    <label class="chk"><input type="checkbox" id="fMob" checked> Mobs</label>
+    <label class="chk"><input type="checkbox" id="fTeleport" checked> Teleports</label>
+    <label class="chk"><input type="checkbox" id="fRoute" checked> Routes</label>
+  </span>
+  <label class="chk" title="Show chest cooldowns for a player — chests they opened since the daily reset (8 PM Eastern) are dimmed until the next one">👤
+    <input type="text" id="playerIgn" list="ignList" placeholder="IGN" maxlength="20"
+      style="width:88px;height:26px;font-size:12px">
+    <datalist id="ignList"></datalist>
+    <span id="playerAvail" style="color:var(--text3);font-size:11px" title="Chests available / total for this player"></span>
+  </label>
+  <button class="act ed-only" id="verifyBtn" title="Confirm crowd-sourced pending chest requests">🔎 Verify</button>
+  <span class="spacer" style="flex:1"></span>
+  <input id="coordSearch" type="text" placeholder="🔍 find X Z" title="Find a chest by in-game coordinates — type X Z (or X Y Z) and press Enter" style="width:118px;height:30px;padding:0 10px;border-radius:8px;border:.5px solid var(--border2);background:var(--card);color:var(--text);font-size:13px">
+  <button class="act" id="lbBtn" title="Run leaderboards — fastest published-route times">🏁 Runs</button>
+  <button class="act" id="fitBtn" title="Fit the whole map on screen">⤢ Fit</button>
+  <button class="act" id="zoomOut" title="Zoom out">－</button>
+  <button class="act" id="zoomIn" title="Zoom in">＋</button>
+  <span class="morewrap">
+    <button class="act" id="moreBtn" title="Everything else — stats, backup, and the editor tools">⋯ More</button>
+    <div class="moremenu" id="moreMenu" hidden>
+      <button class="act" id="pstatsBtn" title="Personal stats — chests/hour, session history, personal bests">📈 My stats</button>
+      <button class="act" id="contribBtn" title="Top contributors — confirmed chest finds and removal reports by player">🏆 Contributors</button>
+      <button class="act ed-only" id="mobcatBtn" title="Mob categories — mobcoins per kill & daily payout limits (editors)">☠ Mob coins</button>
+      <div class="mdiv"></div>
+      <button class="act" id="backupBtn" title="Export or restore the whole map as a backup file">💾 Backup</button>
+      <div class="mdiv ed-only"></div>
+      <button class="act ed-only" id="binBtn" title="Recycle bin — restore markers removed in the last 7 days">🗑 Bin</button>
+      <button class="act ed-only" id="calBtn" title="Align in-game X/Z coordinates to the map (needed for coordinate-based placement and the capture app)">🎯 Calibrate</button>
+      <button class="act ed-only" id="realignBtn" title="Swapped the map image? Snap every pin AND area outline back onto the new image. Discards manual drag-nudges; skips mobs and pins that fall outside the new map.">⤾ Re-align pins</button>
+    </div>
+  </span>
+</div>
+
+<div class="body">
+  <div class="viewport" id="viewport">
+    <div class="world" id="world">
+      <img class="mapimg" id="mapimg" src="map.png?v=2" alt="Dungeon map" draggable="false">
+      <svg id="areasvg" viewBox="0 0 100 100" preserveAspectRatio="none"
+           style="position:absolute;inset:0;width:100%;height:100%;overflow:visible;pointer-events:none"></svg>
+      <svg class="routes" id="routesvg" preserveAspectRatio="none"></svg>
+    </div>
+  </div>
+
+  <aside class="side">
+    <div class="scroll">
+      <div class="sechead">Legend</div>
+      <div class="legend">
+        <div class="lrow"><span class="sw" style="background:var(--chest)"></span> Chest</div>
+        <div class="lrow"><span class="sw circ" style="background:var(--chest);border-style:dashed"></span> Chest cluster <span style="color:var(--text3)">— click to expand</span></div>
+        <div style="color:var(--text3);margin:7px 0 3px">Chest group — by size</div>
+        <div class="lrow"><span class="sw circ g-small"></span> Small (1–3)</div>
+        <div class="lrow"><span class="sw circ g-med"></span> Medium (4–7)</div>
+        <div class="lrow"><span class="sw circ g-large"></span> Large (8+)</div>
+        <div class="lrow" style="margin-top:7px"><span class="sw circ" style="background:var(--mob)"></span> Mob spawn</div>
+      </div>
+      <div class="sechead" style="display:flex;justify-content:space-between;align-items:center">
+        <span>Areas</span>
+        <span>
+          <button class="tinylink" id="coverageBtn" title="Colour areas by how confidently their chest-to-chest travel times are known — red = mostly unmapped or stale (scout here to sharpen routes), green = well-measured and fresh">🌡 Coverage</button>
+          <button class="tinylink ed-only" id="drawAreaBtn" title="Draw a named area boundary on the map — chests inside count toward that area's completion">▱ Draw area</button>
+        </span>
+      </div>
+      <div class="legend" id="areasPanel"></div>
+    </div>
+    <div class="routebox">
+      <div class="sechead" style="display:flex;justify-content:space-between;align-items:center">
+        <span>Loot routes</span>
+        <button class="tinylink ed-only" id="newRoute">+ New route</button>
+      </div>
+      <div class="scroll"><div class="routelist" id="routelist"></div></div>
+    </div>
+  </aside>
+</div>
+
+<div class="tip" id="tip"></div>
+
+<!-- marker editor -->
+<div class="overlay" id="mOverlay" role="dialog" aria-modal="true" aria-labelledby="mTitle">
+  <div class="modal">
+    <h2 id="mTitle">Chest</h2>
+    <div class="fld">
+      <label>Type</label>
+      <div class="seg" id="kindSeg" role="group" aria-label="Marker type">
+        <button type="button" data-kind="chest">📦 Chest</button>
+        <button type="button" data-kind="group">⬡ Group</button>
+        <button type="button" data-kind="mob">☠ Mob</button>
+        <button type="button" data-kind="teleport">🌀 Teleport</button>
+      </div>
+    </div>
+    <div class="fld"><label for="mName">Name / label (optional)</label><input type="text" id="mName" maxlength="60" placeholder="e.g. Frostveil vault"></div>
+
+    <div class="fld" data-for="chest"><label for="mDiff">Route difficulty <span style="color:var(--text3);font-weight:400">— scales route estimates only, never measured times</span></label>
+      <select id="mDiff">
+        <option value="0.75">Fast (0.75×)</option>
+        <option value="1" selected>Normal (1×)</option>
+        <option value="1.5">Slow (1.5×)</option>
+        <option value="2">Hard (2×)</option>
+        <option value="5">Impossible (5×)</option>
+      </select>
+    </div>
+
+    <div class="fld" data-for="group"><label for="mCount">Chests in this group</label><input type="number" id="mCount" min="1" max="999" step="1" value="3"><div class="mhint" id="groupHint"></div></div>
+    <div class="row3" data-for="mob">
+      <div class="fld"><label for="mXp">XP each</label><input type="number" id="mXp" min="0" step="1" value="0"></div>
+      <div class="fld"><label for="mSpawn">Spawn count</label><input type="number" id="mSpawn" min="0" step="1" value="1"></div>
+      <div class="fld"><label for="mMobCat">Category</label><select id="mMobCat"></select></div>
+    </div>
+
+    <div class="fld"><label>In-game coordinates (X / Y / Z, optional)</label>
+      <div class="row3">
+        <input type="number" id="mGx" step="any" placeholder="X" aria-label="In-game X">
+        <input type="number" id="mGy" step="any" placeholder="Y" aria-label="In-game Y">
+        <input type="number" id="mGz" step="any" placeholder="Z" aria-label="In-game Z">
+      </div>
+      <button type="button" class="tinylink" id="mFromCoords" hidden style="margin-top:4px">📍 Position marker on the map from these coordinates</button>
+    </div>
+    <div class="fld"><label for="mNote">Note (optional)</label><textarea id="mNote" maxlength="200" placeholder="Anything worth remembering…"></textarea></div>
+
+    <div class="mbtns">
+      <button class="act danger" id="mDelete" hidden>Delete</button>
+      <span class="spacer"></span>
+      <button class="act" id="mCancel">Cancel</button>
+      <button class="act primary" id="mSave">Save</button>
+    </div>
+    <div class="mhint err" id="mErr"></div>
+  </div>
+</div>
+
+<!-- route editor -->
+<div class="overlay" id="rOverlay" role="dialog" aria-modal="true" aria-labelledby="rTitle">
+  <div class="modal">
+    <h2 id="rTitle">Route</h2>
+    <div class="fld"><label for="rName">Route name</label><input type="text" id="rName" maxlength="60" placeholder="e.g. Frostveil gold run"></div>
+    <div class="fld"><label for="rAuthor">Your name (optional, shown when published)</label><input type="text" id="rAuthor" maxlength="40"></div>
+    <div class="fld"><label for="rTotal">Total time (optional, mm:ss or seconds)</label><input type="text" id="rTotal" placeholder="e.g. 3:20"></div>
+    <div class="fld">
+      <label>Stops <span style="color:var(--text3);text-transform:none">(in Route mode, click chests or mobs on the map to add)</span></label>
+      <div id="rNodes" style="border:.5px solid var(--border);border-radius:9px;padding:6px;max-height:230px;overflow:auto"></div>
+      <div class="mhint" id="rCoins"></div>
+      <div class="mhint" id="rFresh" style="margin-top:4px"></div>
+    </div>
+    <div class="fld" id="rRateFld" hidden>
+      <label>Ratings <span id="rRateAvg" style="color:var(--text3);text-transform:none"></span></label>
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+        <div id="rStars" class="stars" role="radiogroup" aria-label="Your rating"></div>
+        <input type="text" id="rComment" maxlength="300" placeholder="Add a comment (optional)"
+          style="flex:1;min-width:140px;height:28px;font-size:12.5px">
+        <button class="act primary" id="rRateBtn" type="button">Rate</button>
+      </div>
+      <div class="mhint" id="rRateHint"></div>
+      <div id="rComments" style="margin-top:6px;max-height:150px;overflow:auto"></div>
+    </div>
+    <div class="mbtns">
+      <button class="act danger ed-only" id="rDelete">Delete</button>
+      <span class="spacer"></span>
+      <button class="act" id="rCancel">Close</button>
+      <button class="act primary ed-only" id="rPublish">Publish</button>
+    </div>
+    <div class="mhint" id="rHint"></div>
+  </div>
+</div>
+
+
+<!-- loot statistics + table editor -->
+<div class="overlay" id="sOverlay" role="dialog" aria-modal="true" aria-label="Mob categories">
+  <div class="modal wide">
+    <h2 style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">☠ Mob categories
+      <span style="flex:1"></span>
+      <button class="act" id="sClose">Close</button>
+    </h2>
+    <p style="color:var(--text3);font-size:12.5px;margin:0 0 10px">Mobcoins earned per kill and optional daily payout limits, by category — shared with everyone. Used to estimate the mobcoins a route's mob stops are worth.</p>
+    <div class="tscroll"><table class="rates" id="mobCatTable"></table></div>
+    <div style="display:flex;gap:8px;margin-top:8px;align-items:center">
+      <button class="act ed-only" id="mcAddRow">＋ Add category</button>
+      <span style="flex:1"></span>
+      <button class="act primary ed-only" id="mcSave">Save categories</button>
+    </div>
+    <div class="mhint" id="mcHint"></div>
+  </div>
+</div>
+
+<!-- run leaderboards -->
+<div class="overlay" id="lbOverlay" role="dialog" aria-modal="true" aria-labelledby="lbTitle">
+  <div class="modal wide">
+    <h2 id="lbTitle" style="display:flex;align-items:center;gap:10px">🏁 Run leaderboards
+      <span style="flex:1"></span>
+      <label class="chk" style="font-weight:400;font-size:13px">Your IGN
+        <input type="text" id="lbIgn" list="ignList" placeholder="IGN" maxlength="20" style="width:96px;height:26px;font-size:12px"></label>
+      <button class="act" id="lbClose">Close</button>
+    </h2>
+    <p style="color:var(--text3);font-size:12.5px;margin:0 0 8px">Fastest completions of each published route, from in-game runs. Your entry is highlighted.</p>
+    <div id="lbBody" class="tscroll" style="max-height:420px;overflow:auto"></div>
+  </div>
+</div>
+
+<!-- personal stats -->
+<div class="overlay" id="pstatsOverlay" role="dialog" aria-modal="true" aria-labelledby="pstatsTitle">
+  <div class="modal wide">
+    <h2 id="pstatsTitle" style="display:flex;align-items:center;gap:10px">📈 Personal stats
+      <span style="flex:1"></span>
+      <label class="chk" style="font-weight:400;font-size:13px">IGN
+        <input type="text" id="pstatsIgn" list="ignList" placeholder="IGN" maxlength="20" style="width:96px;height:26px;font-size:12px"></label>
+      <button class="act" id="pstatsClose">Close</button>
+    </h2>
+    <div id="pstatsBody" class="tscroll" style="max-height:440px;overflow:auto"></div>
+  </div>
+</div>
+
+<!-- contributor leaderboard -->
+<div class="overlay" id="contribOverlay" role="dialog" aria-modal="true" aria-labelledby="contribTitle">
+  <div class="modal wide">
+    <h2 id="contribTitle" style="display:flex;align-items:center;gap:10px">🏆 Top contributors
+      <span style="flex:1"></span>
+      <button class="act" id="contribClose">Close</button>
+    </h2>
+    <p style="color:var(--text3);font-size:12.5px;margin:0 0 8px">Chests located that made it onto the map,
+    and missing chests reported that an editor confirmed. Thank you for keeping the map accurate! 💛</p>
+    <div id="contribBody" class="tscroll" style="max-height:420px;overflow:auto"></div>
+  </div>
+</div>
+
+<!-- backup / restore -->
+<div class="overlay" id="backupOverlay" role="dialog" aria-modal="true" aria-labelledby="backupTitle">
+  <div class="modal">
+    <h2 id="backupTitle" style="display:flex;align-items:center;gap:10px">💾 Backup &amp; restore
+      <span style="flex:1"></span>
+      <button class="act" id="backupClose">Close</button>
+    </h2>
+    <p style="color:var(--text3);font-size:12.5px;margin:0 0 10px">Export downloads the entire shared map — chests, groups, mobs, routes, chest types, mob categories, calibration, learned travel times, leaderboards and player logs — as one JSON file.</p>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+      <button class="act primary" id="exportBtn">⬇ Export backup (.json)</button>
+      <span id="exportInfo" style="color:var(--text3);font-size:12px"></span>
+    </div>
+    <div class="ed-only">
+    <div class="sechead" style="padding:16px 0 6px">Restore</div>
+    <p style="color:var(--text3);font-size:12.5px;margin:0 0 8px">Uploads the map structure (chests, groups, mobs, routes, chest types, mob categories) from a backup file to the shared map <b>for everyone</b>. Existing entries with the same id are overwritten; nothing is deleted. Large maps upload gradually (the shared store limits writes to ~30/min).</p>
+    <label class="chk" style="font-size:12.5px;margin-bottom:8px;display:block">
+      <input type="checkbox" id="importShared"> Also overwrite shared leaderboards, player cooldown logs, learned travel times &amp; calibration
+      <span style="color:var(--text3)">— reverts those to the backup's snapshot for everyone, discarding anything added since</span>
+    </label>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+      <input type="file" id="importFile" accept="application/json,.json" style="display:none">
+      <button class="act" id="importBtn">⬆ Restore from file…</button>
+      <button class="act danger" id="importCancel" hidden>Stop</button>
+      <span id="importInfo" style="color:var(--text3);font-size:12px"></span>
+    </div>
+    <div class="sechead" style="padding:16px 0 6px">Maintenance</div>
+    <p style="color:var(--text3);font-size:12.5px;margin:0 0 8px">When a chest is removed, the travel times learned to it stay behind. Left alone they eventually fill the store and block <b>new</b> measurements. Clean up drops every travel time whose chest is gone (both are re-learned automatically as routes get run).</p>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+      <button class="act" id="sweepBtn">🧹 Clean up orphaned travel data</button>
+      <span id="sweepInfo" style="color:var(--text3);font-size:12px"></span>
+    </div>
+    </div>
+  </div>
+</div>
+
+<!-- recycle bin -->
+<div class="overlay" id="binOverlay" role="dialog" aria-modal="true" aria-labelledby="binTitle">
+  <div class="modal">
+    <h2 id="binTitle" style="display:flex;align-items:center;gap:10px">🗑 Recycle bin
+      <span style="flex:1"></span>
+      <button class="act" id="binClose">Close</button>
+    </h2>
+    <p style="color:var(--text3);font-size:12.5px;margin:0 0 8px">Markers removed in the last 7 days. Restore puts them back on the map for everyone.</p>
+    <div class="tscroll" style="border:.5px solid var(--border);border-radius:10px;max-height:340px;overflow:auto"><table class="rates" id="binTable"></table></div>
+    <div class="mhint" id="binHint"></div>
+  </div>
+</div>
+
+<!-- help: what every tool does -->
+<div class="overlay" id="helpOverlay" role="dialog" aria-modal="true" aria-labelledby="helpTitle">
+  <div class="modal help" id="helpModal">
+    <h2 id="helpTitle" style="display:flex;align-items:center;gap:10px">❓ Guide
+      <span style="flex:1"></span>
+      <button class="act" id="helpClose">Close</button>
+    </h2>
+    <p class="lead">This map is a shared, community chest &amp; route tracker for the dungeon. Anyone can browse it and track their own cooldowns; <b>editors</b> (with a write key) maintain the pins. The <a href="get-app.html">companion app</a> reads the in-game F7 panel to log chests and time your route runs.</p>
+
+    <h3>Map tools <span style="color:var(--text3);font-weight:400;font-size:11px">— the pill buttons top-left</span></h3>
+    <div class="hrow"><div class="hk">✋ Select</div><div class="hd">Pan, zoom, and click any pin to inspect it (or, as an editor, edit it). The default tool.</div></div>
+    <div class="hrow"><div class="hk">📦 Chest <span class="ed">Editor</span></div><div class="hd">Click the map to place a single chest, or open one and enter its in-game X/Y/Z.</div></div>
+    <div class="hrow"><div class="hk">⬡ Group <span class="ed">Editor</span></div><div class="hd">One pin standing for a cluster of chests at a spot — you set how many. The route generator treats it as that whole pack.</div></div>
+    <div class="hrow"><div class="hk">☠ Mob <span class="ed">Editor</span></div><div class="hd">Mark a mob spawn (XP, spawn count, category) — handy reference, excluded from loot routes.</div></div>
+    <div class="hrow"><div class="hk">🌀 Teleport <span class="ed">Editor</span></div><div class="hd">Mark a teleport/waypoint spot so runners know the fast ways around.</div></div>
+    <div class="hrow"><div class="hk">🧭 Route <span class="ed">Editor</span></div><div class="hd">Build a named route by clicking its chests in order; publish it so others can run and race it.</div></div>
+    <div class="hrow"><div class="hk">◈ Reliability grade</div><div class="hd">Each route shows an A–F grade for how trustworthy it still is: how recently its chests were actually opened by anyone (proof they still exist), plus how well-measured its leg times are. A <b>⚠</b> flags a route whose stops were removed from the map or whose loot hasn't been confirmed in a long time.</div></div>
+
+    <h3>View &amp; find</h3>
+    <div class="hrow"><div class="hk">Chests · Groups · Mobs · Teleports · Routes</div><div class="hd">Show/hide each kind of pin to de-clutter the map.</div></div>
+    <div class="hrow"><div class="hk">👤 IGN</div><div class="hd">Type a player name to dim the chests they've already opened this reset (cooldown) — so you see only what's still up for them.</div></div>
+    <div class="hrow"><div class="hk">🔍 find X Z</div><div class="hd">Jump to a chest by its in-game coordinates — type <span class="mono">X Z</span> (or <span class="mono">X Y Z</span>) and press Enter.</div></div>
+    <div class="hrow"><div class="hk">🌡 Coverage</div><div class="hd">Colour each area by how well its chest-to-chest travel times are measured — red = scout here to sharpen routes, green = well-known.</div></div>
+    <div class="hrow"><div class="hk">⤢ Fit · ＋ － </div><div class="hd">Fit the whole map to the screen, or zoom in/out (mouse wheel works too).</div></div>
+
+    <h3>Stats &amp; leaderboards <span style="color:var(--text3);font-weight:400;font-size:11px">— 🏁 Runs on the toolbar, the rest under ⋯ More</span></h3>
+    <div class="hrow"><div class="hk">🏁 Runs</div><div class="hd">Fastest published-route times. Players tied for a route's record all share 🥇 (co-holders), and each route shows a <b>typical</b> time averaged over every run — a realistic target, not just the record.</div></div>
+    <div class="hrow"><div class="hk">📈 My stats</div><div class="hd">Your chests/hour, session history and personal bests (from opens logged in the app).</div></div>
+    <div class="hrow"><div class="hk">🏆 Contributors</div><div class="hd">Who has found and verified the most chests.</div></div>
+
+    <h3>Under ⋯ More <span style="color:var(--text3);font-weight:400;font-size:11px">— maintenance &amp; editor tools (most need a write key)</span></h3>
+    <div class="hrow"><div class="hk">🔑 Editor</div><div class="hd">Paste your write key to unlock editing. Without it the map is view-only (you can still track your own cooldowns and run routes).</div></div>
+    <div class="hrow"><div class="hk">🎯 Calibrate <span class="ed">Editor</span></div><div class="hd">Line up in-game X/Z with the map image — required before coordinate-based placement and before the app can draw pins. <b>Calibrating never moves existing pins</b> — after a map-image swap you'll be offered ⤾ Re-align to snap them over.</div></div>
+    <div class="hrow"><div class="hk">⤾ Re-align pins <span class="ed">Editor</span></div><div class="hd">After swapping the map image and re-calibrating, snaps every pin back to its saved in-game coordinates — and refits the drawn area outlines onto the new image the same way. If pins ever look uniformly shifted, this is the fix (the tool warns you when it detects that).</div></div>
+    <div class="hrow"><div class="hk">▱ Draw area <span class="ed">Editor</span></div><div class="hd">Outline a named region (button in the sidebar); chests inside it count toward that area's completion total.</div></div>
+    <div class="hrow"><div class="hk">🔎 Verify <span class="ed">Editor</span></div><div class="hd">On the toolbar: confirm or reject the chest locations and removals players have submitted.</div></div>
+    <div class="hrow"><div class="hk">🗑 Bin <span class="ed">Editor</span></div><div class="hd">Restore any marker removed in the last 7 days.</div></div>
+    <div class="hrow"><div class="hk">💾 Backup</div><div class="hd">Export the whole map as a JSON file (anyone), or restore it and clean up orphaned travel data (editors).</div></div>
+    <div class="hrow"><div class="hk">🧹 Clean up <span class="ed">Editor</span></div><div class="hd">In Backup: prune travel times measured to chests that no longer exist, freeing room for new ones. Find it under Backup → Maintenance.</div></div>
+
+    <h3>Reading the pins</h3>
+    <div class="hrow"><div class="hk">Chest / cluster</div><div class="hd">A gold square is one chest; a dashed gold circle is several chests too close to separate — click to expand.</div></div>
+    <div class="hrow"><div class="hk">Group size</div><div class="hd">Group pins are coloured by pack size: red 1–3, orange 4–7, purple 8+.</div></div>
+    <div class="hrow"><div class="hk">Dimmed pin</div><div class="hd">Greyed out = on cooldown for the player in the 👤 box (opened since the last 8 PM ET reset).</div></div>
+    <div class="hrow"><div class="hk">Gold-ringed pin</div><div class="hd">Part of the route you're previewing, numbered in run order.</div></div>
+
+    <h3>The companion app <span style="color:var(--text3);font-weight:400;font-size:11px">— logs chests &amp; times your runs</span></h3>
+    <div class="hrow"><div class="hk">Modes</div><div class="hd"><b>⏺ Log</b> add/record chests you open · <b>🧭 Record</b> capture a route's stops &amp; leg times · <b>🔎 Verify</b> (editors) confirm submissions · <b>▶ Run</b> race a route against the clock.</div></div>
+    <div class="hrow"><div class="hk">During a run</div><div class="hd">A <b>stopwatch</b> counts your opens against the route's stops and records your finish time to the leaderboard. It <b>⏸ auto-pauses</b> in menus, on lost focus, or when you stand still, so a break doesn't ruin your time. Study the route here on the map first — navigating it is the skill.</div></div>
+    <div class="hrow"><div class="hk">♻ Reset cooldowns</div><div class="hd">Tap it after the random in-game event that unlocks every chest early, so the map shows them as available again.</div></div>
+  </div>
+</div>
+
+<!-- verify pending chest requests (editors only) -->
+<!-- account: Hytale sign-in, key, editors (owner) -->
+<div class="overlay" id="acOverlay" role="dialog" aria-modal="true" aria-labelledby="acTitle">
+  <div class="modal" style="max-width:440px">
+    <h2 id="acTitle" style="display:flex;align-items:center;gap:10px">Account
+      <span style="flex:1"></span>
+      <button class="act" id="acClose">Close</button>
+    </h2>
+    <div id="acBody"></div>
+  </div>
+</div>
+
+<div class="overlay" id="verOverlay" role="dialog" aria-modal="true" aria-labelledby="verTitle">
+  <div class="modal">
+    <h2 id="verTitle" style="display:flex;align-items:center;gap:10px">🔎 Pending chest requests
+      <span style="flex:1"></span>
+      <button class="act" id="verClose">Close</button>
+    </h2>
+    <p style="color:var(--text3);font-size:12.5px;margin:0 0 8px">Crowd-sourced chest locations submitted by signed-in players. Approve to add a real chest, or reject to discard.</p>
+    <div class="tscroll" style="border:.5px solid var(--border);border-radius:10px;max-height:360px;overflow:auto"><table class="rates" id="verTable"></table></div>
+    <div class="mhint" id="verHint"></div>
+  </div>
+</div>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script>
+(function(){
+  var API="api/dungeon";
+  var K_LOCAL="histatu_dungeon_local_v1";       // markers when store offline
+  var K_ROUTES="histatu_dungeon_routes_local_v1"; // local draft routes
+  var el=function(id){return document.getElementById(id);};
+  function esc(s){return String(s==null?"":s).replace(/[&<>"']/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c];});}
+  var uid=function(){return Date.now().toString(36)+Math.random().toString(36).slice(2,7);};
+
+  /* ---------- state ---------- */
+  var entries={};             // id -> marker (published routes are kept in `pubRoutes`)
+  var pubRoutes={};           // id -> published route (from server)
+  var draftRoutes=loadDrafts(); // id -> local draft route
+  var shared=null;            // true / false / null
+  var notConfigured=false;
+  var calibration=null;       // shared world->map transform: u=ax*wx+bx, v=az*wz+bz
+  var openLogs={};            // "opens-<slug>" -> per-player chest-open entry
+  var runsLog=null;           // shared run-history singleton (best times + recent feed)
+  var contribLog=null;        // shared contributor-tally singleton (confirmed finds/removals per IGN)
+  var areasLog={};            // id -> editor-drawn area polygon {name, color, points[[x,y]..]}
+  var areaTotals=null;        // singleton: the game HUD's true chest total per area (from the runner)
+  var travelTimes=null;       // shared learned travel-time singleton (for full backups)
+  var RESET_HOUR_ET=20; // chests a player opened ALL relock until the daily reset —
+                        // 8 PM US Eastern wall clock (DST-aware via Intl) — not a rolling timer
+  var K_PLAYER="histatu_dungeon_player_v1";
+  var player="";try{player=localStorage.getItem(K_PLAYER)||"";}catch(e){}
+  var pendings={};            // id -> crowd-sourced pending chest request
+  var ratings={};             // routeId -> { ignSlug: {stars, comment, ign, at} }
+  var authRequired=true;      // identity model: every contribution needs a signed-in Hytale account
+  // Personal KEY (hd_…) minted by the website after a Hytale sign-in; and `me` = who the server says
+  // this key belongs to ({ign, role, uuid}). The key is remembered locally so the site (and the app,
+  // once you paste it) recognise you across visits. Editing/contributing is decided by ROLE, not by
+  // holding a secret — nothing to leak, nothing to rotate for others.
+  var K_PKEY="histatu_dungeon_pkey_v1";
+  var playerKey="";try{playerKey=localStorage.getItem(K_PKEY)||"";}catch(e){}
+  var me=null;                // {ign, role, uuid} or null when signed out / key stale
+  function signedIn(){return !!me;}
+  function canEdit(){return !!(me&&(me.role==="owner"||me.role==="editor"));}  // map-structure rights
+  function isOwner(){return !!(me&&me.role==="owner");}
+  function writeHeaders(){var h={"Content-Type":"application/json"};if(playerKey)h["x-player-key"]=playerKey;return h;}
+  function setPlayerKey(k){playerKey=k||"";try{k?localStorage.setItem(K_PKEY,k):localStorage.removeItem(K_PKEY);}catch(e){}}
+  function pendingCount(){return Object.keys(pendings).length;}
+  // reflect identity + role across the whole UI (called from refresh + sign-in/out)
+  function syncEditorUI(){
+    document.body.classList.toggle("viewer",!canEdit());
+    document.body.classList.toggle("signed-in",signedIn());
+    document.body.classList.toggle("is-owner",isOwner());
+    var eb=el("editorBtn");
+    if(eb){
+      if(signedIn()){
+        eb.textContent="✓ "+me.ign+(me.role!=="player"?" · "+me.role:"");
+        eb.classList.add("primary");
+        eb.title="Signed in as "+me.ign+" ("+me.role+") — click for account options";
+      }else{
+        eb.textContent="Sign in";
+        eb.classList.remove("primary");
+        eb.title="Sign in with your Hytale account to contribute (verifies your in-game name)";
+      }
+    }
+    var vb=el("verifyBtn");
+    if(vb){var n=pendingCount();vb.textContent="🔎 Verify"+(n?" ("+n+")":"");vb.disabled=!n;}
+  }
+  var tool="select";
+  var filters={chest:true,group:true,mob:true,teleport:true,route:true};
+  var editingMarker=null;     // id being edited (marker modal)
+  var editKind="chest";
+  var activeRoute=null;       // id of the route being built/edited
+  var saving=false;
+
+  /* view transform */
+  var baseW=1210,baseH=822;   // placeholder for the current map.png; set exactly from natural size on load
+  var zoom=1,panX=0,panY=0,minZoom=0.2,maxZoom=8;
+  var highlightId=null;       // marker id kept selected across re-renders (search / open editor)
+
+  /* ---------- persistence: drafts + local markers ---------- */
+  function loadDrafts(){try{var s=JSON.parse(localStorage.getItem(K_ROUTES));return s&&typeof s==="object"?s:{};}catch(e){return{};}}
+  function saveDrafts(){try{localStorage.setItem(K_ROUTES,JSON.stringify(draftRoutes));}catch(e){}}
+  function loadLocal(){try{var s=JSON.parse(localStorage.getItem(K_LOCAL));return s&&typeof s==="object"?s:{};}catch(e){return{};}}
+  function saveLocal(){try{localStorage.setItem(K_LOCAL,JSON.stringify(entries));}catch(e){}}
+  var K_CAL="histatu_dungeon_cal_local_v1"; // calibration set while offline
+  function loadCalLocal(){try{var s=JSON.parse(localStorage.getItem(K_CAL));return s&&typeof s==="object"?s:null;}catch(e){return null;}}
+  function saveCalLocal(){try{if(calibration)localStorage.setItem(K_CAL,JSON.stringify(calibration));else localStorage.removeItem(K_CAL);}catch(e){}}
+
+  /* ---------- chest drop tables & rarity: REMOVED ----------
+     Drop odds are unknowable and change too often to log accurately, so the tool no longer models
+     chest rarity or loot at all — a chest is just a chest, and CHESTS OPENED is the only metric
+     (leaderboards, contributor board, personal stats). Mob categories below are unrelated and kept. */
+
+  /* ---------- mob categories (mobcoins per kill + daily payout limits) ---------- */
+  var MOBCAT_DEFAULTS={
+    normal:{id:"normal",name:"Normal",mobcoin:1,dailyLimit:null},
+    miniboss:{id:"miniboss",name:"Miniboss",mobcoin:0,dailyLimit:null},
+    boss:{id:"boss",name:"Boss",mobcoin:0,dailyLimit:null}
+  };
+  var MOBCAT_ORDER=["normal","miniboss","boss"];
+  var catOverrides={}; // slug -> shared "mobcat" entry (stored under id "mc-"+slug so ids can't collide with chest types)
+  var K_MOBCATS="histatu_dungeon_mobcats_local_v1";
+  function loadCatsLocal(){try{var s=JSON.parse(localStorage.getItem(K_MOBCATS));return s&&typeof s==="object"?s:{};}catch(e){return{};}}
+  function saveCatsLocal(){try{localStorage.setItem(K_MOBCATS,JSON.stringify(catOverrides));}catch(e){}}
+  function catSlugOf(entryId){return String(entryId).indexOf("mc-")===0?String(entryId).slice(3):String(entryId);}
+  function mobCats(){
+    var map={},order=[];
+    MOBCAT_ORDER.forEach(function(k){
+      var base=MOBCAT_DEFAULTS[k],ov=catOverrides[k];
+      map[k]=ov?{id:k,name:base.name,mobcoin:+ov.mobcoin||0,dailyLimit:ov.dailyLimit==null?null:+ov.dailyLimit,builtin:true}
+               :{id:k,name:base.name,mobcoin:base.mobcoin,dailyLimit:base.dailyLimit,builtin:true};
+      order.push(k);
+    });
+    Object.keys(catOverrides).sort().forEach(function(k){
+      if(map[k])return;
+      var t=catOverrides[k];
+      map[k]={id:k,name:t.name||k,mobcoin:+t.mobcoin||0,dailyLimit:t.dailyLimit==null?null:+t.dailyLimit,builtin:false};
+      order.push(k);
+    });
+    return{map:map,order:order};
+  }
+  function catInfo(slug){return mobCats().map[slug]||{id:slug,name:slug||"?",mobcoin:0,dailyLimit:null,missing:true};}
+  // Expected mobcoins for a set of route stops: per-category sums, each capped at its daily limit.
+  function routeMobcoins(r){
+    var mc=mobCats().map,perCat={},total=0,capped=false;
+    (r.nodes||[]).forEach(function(nid){
+      var m=entries[nid];if(!live(m)||m.kind!=="mob")return;
+      var slug=m.category||"normal",cat=mc[slug];if(!cat)return;
+      // null = legacy mob saved before spawnAmount existed; an explicit 0 must stay 0
+      perCat[slug]=(perCat[slug]||0)+cat.mobcoin*(m.spawnAmount==null?1:m.spawnAmount);
+    });
+    for(var s in perCat){
+      var lim=mc[s]?mc[s].dailyLimit:null,v=perCat[s];
+      if(lim!=null&&v>lim){v=lim;capped=true;}
+      total+=v;
+    }
+    return{total:total,capped:capped};
+  }
+  function fmtAmt(v){
+    if(!isFinite(v))return"∞";var a=Math.abs(v);
+    if(a>=1e6)return(v/1e6).toFixed(2)+"M";
+    if(a>=1e4)return(v/1e3).toFixed(1)+"K";
+    if(a>=100)return Math.round(v).toLocaleString("en-US");
+    if(a>=1)return String(+v.toFixed(2));
+    if(a===0)return"0";
+    return String(+v.toFixed(3));
+  }
+
+  /* ---------- time helpers ---------- */
+  function parseTime(s){
+    if(s==null)return null; s=String(s).trim(); if(!s)return null;
+    if(s.indexOf(":")>=0){var p=s.split(":");var m=parseInt(p[0],10)||0,sec=parseInt(p[1],10)||0;var t=m*60+sec;return t>=0?t:null;}
+    var n=parseFloat(s); return isFinite(n)&&n>=0?n:null;
+  }
+  function fmtTime(sec){
+    if(sec==null||!isFinite(sec))return"—";
+    sec=Math.round(sec); var m=Math.floor(sec/60),s=sec%60;
+    return m? (m+"m"+(s?" "+s+"s":"")) : (s+"s");
+  }
+
+  /* ---------- sync ---------- */
+  function refresh(quiet){
+    return fetch(API,{cache:"no-store"}).then(function(r){
+      if(r.status===503)throw{notConfigured:true};
+      if(!r.ok)throw new Error("http "+r.status);
+      return r.json();
+    }).then(function(data){
+      var firstConnect=shared!==true;
+      authRequired=data.authRequired!==false;
+      me=(data.me&&data.me.ign)?data.me:null;  // server is the source of truth for who this key is
+      if(playerKey&&!me){setPlayerKey("");}     // key was reset/rotated elsewhere — forget it locally
+      var all=data.entries&&typeof data.entries==="object"?data.entries:{};
+      entries={};pubRoutes={};catOverrides={};calibration=null;openLogs={};runsLog=null;travelTimes=null;pendings={};ratings={};contribLog=null;areasLog={};areaTotals=null;
+      for(var id in all){var e=all[id];
+        if(e&&e.type==="route")pubRoutes[id]=e;
+        else if(e&&e.type==="chesttype")continue; // legacy drop-table entries — ignored (feature removed)
+        else if(e&&e.type==="mobcat")catOverrides[catSlugOf(id)]=e;
+        else if(e&&e.type==="calibration")calibration=e;
+        else if(e&&e.type==="opens")openLogs[id]=e;
+        else if(e&&e.type==="runs")runsLog=e;
+        else if(e&&e.type==="travel")travelTimes=e; // used by the runner; captured for backups
+        else if(e&&e.type==="pending")pendings[id]=e;
+        else if(e&&e.type==="rating")ratings[e.route]=e.by||{};
+        else if(e&&e.type==="contrib")contribLog=e;
+        else if(e&&e.type==="area")areasLog[id]=e;
+        else if(e&&e.type==="areatotals")areaTotals=e;
+        else if(e)entries[id]=e;}
+      shared=true;syncEditorUI();render();
+      checkAlignment(); // editors get a heads-up when pins disagree with the live calibration
+      if(firstConnect&&Object.keys(loadLocal()).length)offerLocalMerge();
+    }).catch(function(e){
+      if(shared===true){if(!quiet)toast("⚠ Couldn't refresh");return;}
+      shared=false;notConfigured=!!(e&&e.notConfigured);
+      entries=loadLocal();catOverrides=loadCatsLocal();calibration=loadCalLocal();render();
+    });
+  }
+  function offerLocalMerge(){
+    var local=loadLocal(),ids=Object.keys(local).filter(function(i){return !entries[i];});
+    if(!ids.length){try{localStorage.removeItem(K_LOCAL);}catch(e){}return;}
+    if(!confirm("Connected to the shared map. Push "+ids.length+" marker"+(ids.length>1?"s":"")+" you added offline so everyone sees them?")){
+      toast("Kept on this device for now");return;
+    }
+    var chain=Promise.resolve(),ok=0;
+    ids.forEach(function(i){chain=chain.then(function(){return fetch(API,{method:"POST",headers:writeHeaders(),body:JSON.stringify(local[i])}).then(function(r){if(r.ok)ok++;}).catch(function(){});});});
+    chain.then(function(){if(ok===ids.length){try{localStorage.removeItem(K_LOCAL);}catch(e){}}toast("Pushed "+ok+" marker"+(ids.length>1?"s":""));return refresh(true);});
+  }
+  function persist(entry,isDelete){
+    if(shared){
+      var req=isDelete?fetch(API+"?id="+encodeURIComponent(entry.id),{method:"DELETE",headers:writeHeaders()})
+        :fetch(API,{method:"POST",headers:writeHeaders(),body:JSON.stringify(entry)});
+      return req.then(function(r){
+        if(!r.ok)return r.json().then(function(j){throw new Error(j.error||("http "+r.status));},function(){throw new Error("http "+r.status);});
+        return r.json().catch(function(){return{};});
+      }).then(function(j){
+        if(entry.type==="route"){ if(isDelete)delete pubRoutes[entry.id]; else pubRoutes[entry.id]=(j&&j.entry)||entry; }
+        else if(entry.type==="mobcat"){ var cs=catSlugOf(entry.id); if(isDelete)delete catOverrides[cs]; else catOverrides[cs]=(j&&j.entry)||entry; }
+        else if(entry.type==="calibration"){ calibration=isDelete?null:((j&&j.entry)||entry); }
+        else{ if(isDelete)delete entries[entry.id]; else entries[entry.id]=(j&&j.entry)||entry; }
+        render();return refresh(true);
+      });
+    }
+    // local-only fallback — markers/categories persist locally; routes must NOT pretend to publish
+    if(entry.type==="mobcat"){
+      var cs2=catSlugOf(entry.id);
+      if(isDelete)delete catOverrides[cs2]; else catOverrides[cs2]=entry;
+      saveCatsLocal();render();
+      return Promise.resolve();
+    }
+    if(entry.type==="calibration"){
+      calibration=isDelete?null:entry;
+      saveCalLocal();render();
+      return Promise.resolve();
+    }
+    if(entry.type==="route"){
+      render();
+      return Promise.reject(new Error(notConfigured?"shared map not connected — draft kept on this device":"offline — draft kept on this device"));
+    }
+    if(isDelete)delete entries[entry.id]; else entries[entry.id]=entry;
+    saveLocal();
+    render();return Promise.resolve();
+  }
+
+  /* ---------- view transform ---------- */
+  var viewport=el("viewport"),world=el("world");
+  function applyTransform(){
+    world.style.transform="translate("+panX+"px,"+panY+"px) scale("+zoom+")";
+    world.style.setProperty("--iz",(1/zoom).toString());
+  }
+  function fit(){
+    var vw=viewport.clientWidth,vh=viewport.clientHeight;
+    zoom=Math.min(vw/baseW,vh/baseH)*0.98;
+    minZoom=zoom*0.6;
+    panX=(vw-baseW*zoom)/2; panY=(vh-baseH*zoom)/2;
+    applyTransform();
+    scheduleRender(); // clustering depends on zoom
+  }
+  function zoomAt(cx,cy,factor){
+    var nz=Math.max(minZoom,Math.min(maxZoom,zoom*factor));
+    if(nz===zoom)return;
+    // keep the world point under the cursor fixed
+    var wx=(cx-panX)/zoom, wy=(cy-panY)/zoom;
+    zoom=nz; panX=cx-wx*zoom; panY=cy-wy*zoom;
+    applyTransform();
+    scheduleRender(); // clustering depends on zoom
+  }
+  function clientToFrac(clientX,clientY){
+    var r=viewport.getBoundingClientRect();
+    var wx=(clientX-r.left-panX)/zoom, wy=(clientY-r.top-panY)/zoom;
+    return {x:Math.max(0,Math.min(1,wx/baseW)), y:Math.max(0,Math.min(1,wy/baseH))};
+  }
+  function centerOnFrac(fx,fy){ // pan so a map fraction sits in the middle of the viewport
+    panX=viewport.clientWidth/2-fx*baseW*zoom;
+    panY=viewport.clientHeight/2-fy*baseH*zoom;
+    applyTransform();scheduleRender();
+  }
+  /* ---------- find a chest by in-game coordinates ---------- */
+  function findByCoords(strv){
+    var nums=(strv||"").split(/[\s,/]+/).map(Number).filter(function(n){return isFinite(n);});
+    if(nums.length<2){toast("Type coordinates like  X Z  or  X Y Z");return;}
+    var hasY=nums.length>=3, x=Math.round(nums[0]),
+        y=hasY?Math.round(nums[1]):null, z=Math.round(nums[hasY?2:1]);
+    var best=null,bd=Infinity;
+    Object.keys(entries).forEach(function(id){
+      var m=entries[id];
+      if(!m||m.type!=="marker"||m.kind!=="chest"||m.deleted||m.gx==null||m.gz==null)return;
+      if(hasY&&m.gy!=null&&Math.round(m.gy)!==y)return;
+      var dx=Math.round(m.gx)-x, dz=Math.round(m.gz)-z, d=dx*dx+dz*dz;
+      if(d<bd){bd=d;best=m;}
+    });
+    if(!best){toast("No chest found near "+x+(hasY?(" "+y):"")+" "+z);return;}
+    zoom=Math.max(zoom,3);           // de-cluster so the single marker is highlightable
+    highlight(best.id);              // persist the selection FIRST so every render keeps it
+    centerOnFrac(best.x,best.y); render();
+    toast((bd===0?"Found chest @ ":"Nearest chest @ ")+[best.gx,best.gy,best.gz].join(" / "));
+  }
+  el("coordSearch").addEventListener("keydown",function(e){if(e.key==="Enter"){e.preventDefault();findByCoords(this.value);}});
+  function timeAgo(ts){
+    var s=Math.max(0,(Date.now()-ts)/1000);
+    if(s<60)return "just now";
+    if(s<3600)return Math.round(s/60)+"m ago";
+    if(s<86400)return Math.round(s/3600)+"h ago";
+    return Math.round(s/86400)+"d ago";
+  }
+
+  el("mapimg").addEventListener("load",function(){
+    baseW=this.naturalWidth||baseW; baseH=this.naturalHeight||baseH;
+    world.style.width=baseW+"px"; world.style.height=baseH+"px";
+    el("routesvg").setAttribute("viewBox","0 0 "+baseW+" "+baseH);
+    fit();render();
+  });
+
+  /* ---------- per-player chest cooldowns ---------- */
+  /* daily reset instant: RESET_HOUR_ET o'clock in America/New_York, DST handled by Intl */
+  function etParts(ms){
+    var p={};
+    new Intl.DateTimeFormat("en-US",{timeZone:"America/New_York",hour12:false,year:"numeric",
+      month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit",second:"2-digit"})
+      .formatToParts(ms).forEach(function(x){p[x.type]=x.value;});
+    return p;
+  }
+  function etWallToUtc(y,m,d,h){ // UTC ms of an Eastern wall-clock time (2-pass offset fix)
+    var want=Date.UTC(y,m-1,d,h,0,0),guess=want;
+    for(var i=0;i<2;i++){
+      var p=etParts(guess);
+      guess+=want-Date.UTC(+p.year,+p.month-1,+p.day,(+p.hour)%24,+p.minute,+p.second);
+    }
+    return guess;
+  }
+  var _resetCache={at:0};
+  function resets(){ // {last, next} reset instants, memoized for 30s
+    var now=Date.now();
+    if(now-_resetCache.at<30000)return _resetCache;
+    var last=now,next=now+864e5,i,p,t;
+    for(i=0;i<3;i++){p=etParts(now-i*864e5);t=etWallToUtc(+p.year,+p.month,+p.day,RESET_HOUR_ET);
+      if(t<=now){last=t;break;}}
+    for(i=0;i<3;i++){p=etParts(now+i*864e5);t=etWallToUtc(+p.year,+p.month,+p.day,RESET_HOUR_ET);
+      if(t>now){next=t;break;}}
+    _resetCache={at:now,last:last,next:next};
+    return _resetCache;
+  }
+  function live(m){return m&&!m.deleted;} // soft-deleted markers are hidden everywhere
+  function playerOpens(){
+    if(!player)return null;
+    var want=player.trim().toLowerCase();
+    for(var id in openLogs){var o=openLogs[id];
+      if(o&&o.ign&&String(o.ign).trim().toLowerCase()===want)return o.opens||{};}
+    return {};// known player format but no opens yet
+  }
+  function coolKey(m){
+    if(m.gx==null||m.gy==null||m.gz==null)return null;
+    return Math.round(m.gx)+","+Math.round(m.gy)+","+Math.round(m.gz);
+  }
+  function coolMsLeft(m,opens){
+    if(!opens)return 0;
+    var k=coolKey(m),t=null;
+    if(k){if(opens[k])t=opens[k].t;}
+    else if(m.gx!=null&&m.gz!=null){
+      // marker saved without a Y: match opens on x/z alone (newest wins)
+      var rx=Math.round(m.gx),rz=Math.round(m.gz);
+      for(var ok in opens){var p=ok.split(",");
+        if(+p[0]===rx&&+p[2]===rz&&(t==null||opens[ok].t>t))t=opens[ok].t;}
+    }
+    if(t==null)return 0;
+    var r=resets(); // opened at/after the last daily reset -> locked until the next one
+    return t>=r.last?Math.max(0,r.next-Date.now()):0;
+  }
+  function fmtLeft(ms){
+    var mn=Math.ceil(ms/60000);
+    return mn>=60?Math.floor(mn/60)+"h "+(mn%60)+"m":mn+"m";
+  }
+
+  /* ---------- rendering ---------- */
+  function groupClass(n){return n>=8?"g-large":n>=4?"g-med":"g-small";}
+  /* auto-clustering: chest markers that overlap at the current zoom collapse into
+     one dashed badge; clicking it fans the members out so each chest is reachable */
+  var expandedCluster=null;   // key of the cluster currently fanned out
+  var CLUSTER_PX=26;          // markers closer than this on screen merge into a badge
+  function chestClusters(){
+    var ids=[];
+    if(filters.chest)for(var id in entries){if(entries[id].kind==="chest"&&live(entries[id]))ids.push(id);}
+    ids.sort();
+    var used={},clusters=[];
+    for(var i=0;i<ids.length;i++){
+      if(used[ids[i]])continue;
+      var seed=entries[ids[i]],members=[ids[i]];used[ids[i]]=true;
+      for(var j=i+1;j<ids.length;j++){
+        if(used[ids[j]])continue;
+        var m2=entries[ids[j]];
+        if(Math.hypot((m2.x-seed.x)*baseW,(m2.y-seed.y)*baseH)*zoom<CLUSTER_PX){
+          members.push(ids[j]);used[ids[j]]=true;
+        }
+      }
+      if(members.length<2)continue;
+      var cx=0,cy=0;
+      members.forEach(function(mid){cx+=entries[mid].x;cy+=entries[mid].y;});
+      clusters.push({key:members.join(","),x:cx/members.length,y:cy/members.length,members:members});
+    }
+    return clusters;
+  }
+  var zoomRenderT=null,lastIgnKey=null;
+  function scheduleRender(){clearTimeout(zoomRenderT);zoomRenderT=setTimeout(render,80);}
+  function markerColorInfo(m){
+    if(m.kind==="chest")return{cls:"mk-chest",label:"chest"};
+    if(m.kind==="group")return{cls:"mk-group "+groupClass(m.count),label:m.count+" chests"};
+    if(m.kind==="teleport")return{cls:"mk-teleport",label:"teleport"};
+    return{cls:"mk-mob",label:"mob"};
+  }
+  function markerGlyph(m){
+    if(m.kind==="chest")return "●";
+    if(m.kind==="group")return String(m.count);
+    if(m.kind==="teleport")return "✦";
+    return "☠";
+  }
+  function render(){
+    // sync banner
+    var dot=el("syncDot"),txt=el("syncText");
+    var nMark=Object.keys(entries).length;
+    if(shared===true){dot.className="dot on";txt.textContent=nMark+" marker"+(nMark===1?"":"s")+" · "+Object.keys(pubRoutes).length+" route"+(Object.keys(pubRoutes).length===1?"":"s")+" · shared";}
+    else if(shared===false){dot.className="dot off";txt.textContent=notConfigured?"⚠ shared map not connected — local only":"local-only mode";}
+    else{dot.className="dot off";txt.textContent="Connecting…";}
+
+    // markers
+    var routedIds=activeRoute?nodeSet(routeById(activeRoute)):null;
+    // remove old marker DOM
+    Array.prototype.slice.call(world.querySelectorAll(".marker")).forEach(function(n){n.remove();});
+    // player cooldown view + IGN suggestions
+    var opens=playerOpens(),cooling={},chestTotal=0;
+    if(opens)for(var cid in entries){var cm=entries[cid];
+      if(cm.kind==="chest"&&live(cm)){chestTotal++;if(coolMsLeft(cm,opens)>0)cooling[cid]=true;}}
+    el("playerAvail").textContent=opens?(chestTotal-Object.keys(cooling).length)+"/"+chestTotal+" up":"";
+    var igns=[];for(var oid in openLogs){if(openLogs[oid]&&openLogs[oid].ign)igns.push(openLogs[oid].ign);}
+    igns.sort();
+    var ignKey=igns.join("\n");
+    if(ignKey!==lastIgnKey){ // don't rebuild the datalist while the user may be typing in it
+      lastIgnKey=ignKey;
+      el("ignList").innerHTML=igns.map(function(n){return '<option value="'+esc(n)+'">';}).join("");
+    }
+
+    var clusters=chestClusters(),inCluster={},openCluster=null;
+    clusters.forEach(function(c){
+      if(c.key===expandedCluster)openCluster=c;               // expanded: members render fanned out
+      else c.members.forEach(function(mid){inCluster[mid]=true;});
+    });
+    if(expandedCluster&&!openCluster)expandedCluster=null;    // membership changed (zoom) — collapse
+    var spider={};
+    if(openCluster){
+      var rp=Math.min(60,16+openCluster.members.length*4)/zoom; // fan radius in map px
+      openCluster.members.forEach(function(mid,k){
+        var ang=2*Math.PI*k/openCluster.members.length-Math.PI/2;
+        spider[mid]={x:openCluster.x+Math.cos(ang)*rp/baseW,y:openCluster.y+Math.sin(ang)*rp/baseH};
+      });
+    }
+    for(var id in entries){
+      var m=entries[id];
+      if(!filters[m.kind]||!live(m))continue;                  // hide soft-deleted markers
+      if(m.kind==="chest"&&inCluster[id]&&id!==highlightId)continue; // hidden behind a cluster badge (but never the highlighted one)
+      var ci=markerColorInfo(m);
+      var d=document.createElement("div");
+      d.className="marker "+ci.cls+(routedIds&&routedIds[id]?" routed":"")+(cooling[id]?" cooling":"")+(id===highlightId?" sel":"");
+      d.dataset.id=id;
+      var pos=spider[id]||m;
+      d.style.left=(pos.x*100)+"%"; d.style.top=(pos.y*100)+"%";
+      d.textContent=markerGlyph(m);
+      world.appendChild(d);
+    }
+    // pending requests (crowd-sourced): dashed "?" = proposed new chest; dashed red "✗" = a
+    // mapped chest reported missing; dashed orange "⚠" = the chest's in-game area disagrees
+    // with the drawn boundary (fix the polygon, then resolve)
+    for(var pid in pendings){
+      var pm=pendings[pid];
+      if(!filters.chest)continue;                 // ride along with the chest filter
+      var rm=pm.kind==="remove",zn=pm.kind==="zone";
+      var pd=document.createElement("div");
+      pd.className="marker "+(zn?"mk-pending-zn":rm?"mk-pending-rm":"mk-pending");
+      pd.dataset.pending=pid;
+      pd.style.left=(pm.x*100)+"%"; pd.style.top=(pm.y*100)+"%";
+      pd.textContent=zn?"⚠":rm?"✗":"?";
+      pd.title=(zn?"Zone review":rm?"Reported missing":"Pending chest request")+(pm.by?" from "+pm.by:"")+
+        (pm.note?" — "+pm.note:"")+(canEdit()?" · click to verify":"");
+      world.appendChild(pd);
+    }
+    drawAreas(); // polygon bounds + labels + the sidebar rollup panel
+    clusters.forEach(function(c){
+      var open=c.key===expandedCluster;
+      var d=document.createElement("div");
+      d.className="marker mk-cluster"+(open?" open":"")+
+        (routedIds&&c.members.some(function(mid){return routedIds[mid];})?" routed":"")+
+        (c.members.every(function(mid){return cooling[mid];})?" cooling":"");
+      d.dataset.cluster=c.key;
+      d.style.left=(c.x*100)+"%"; d.style.top=(c.y*100)+"%";
+      d.textContent=open?"×":String(c.members.length);
+      world.appendChild(d);
+    });
+    drawRoutes();
+    renderRouteList();
+    if(el("sOverlay").classList.contains("open"))loadCatEditor();
+  }
+  function drawRoutes(){
+    var svg=el("routesvg"); svg.innerHTML="";
+    var toDraw=[],seen={};
+    if(filters.route){
+      // unsaved shadows win over their stale published copies (dashed = not yet shared)
+      for(var did in draftRoutes){toDraw.push({r:draftRoutes[did],draft:true});seen[did]=true;}
+      for(var id in pubRoutes){if(!seen[id]){toDraw.push({r:pubRoutes[id],draft:false});seen[id]=true;}}
+    }
+    if(activeRoute&&!seen[activeRoute]){var ar=routeById(activeRoute);if(ar)toDraw.push({r:ar,draft:!pubRoutes[ar.id]});}
+    toDraw.forEach(function(t){
+      var r=t.r,pts=[];
+      // a soft-deleted stop is treated like a missing one — no line drawn through it
+      r.nodes.forEach(function(nid,ni){var m=entries[nid];if(live(m))pts.push({x:m.x*baseW,y:m.y*baseH,i:ni});});
+      for(var i=0;i<pts.length-1;i++){
+        var ln=document.createElementNS("http://www.w3.org/2000/svg","line");
+        ln.setAttribute("class","leg"+(t.draft?" draft":""));
+        ln.setAttribute("x1",pts[i].x);ln.setAttribute("y1",pts[i].y);
+        ln.setAttribute("x2",pts[i+1].x);ln.setAttribute("y2",pts[i+1].y);
+        if(t.r===routeById(activeRoute))ln.style.stroke="var(--accent)";
+        svg.appendChild(ln);
+        // label only segments whose endpoints were adjacent stops; gaps (missing markers) get no time
+        var lt=(pts[i+1].i===pts[i].i+1)?(r.legTimes&&r.legTimes[pts[i].i]):null;
+        if(lt!=null){
+          var tx=document.createElementNS("http://www.w3.org/2000/svg","text");
+          tx.setAttribute("x",(pts[i].x+pts[i+1].x)/2);tx.setAttribute("y",(pts[i].y+pts[i+1].y)/2-4);
+          tx.setAttribute("text-anchor","middle");tx.textContent=fmtTime(lt);
+          svg.appendChild(tx);
+        }
+      }
+    });
+  }
+
+  /* ---------- routes helpers ---------- */
+  function routeById(id){return draftRoutes[id]||pubRoutes[id]||null;} // unsaved shadows win
+  function allRoutes(){var o=[],seen={};for(var i in draftRoutes){o.push(draftRoutes[i]);seen[i]=true;}for(var j in pubRoutes){if(!seen[j])o.push(pubRoutes[j]);}return o;}
+  function nodeSet(r){var s={};if(r)r.nodes.forEach(function(n){s[n]=true;});return s;}
+  function renderRouteList(){
+    var box=el("routelist"),rs=allRoutes();
+    if(!rs.length){box.innerHTML='<div class="empty">No routes yet. Pick <b>🧭 Route</b>, then click chests on the map, or press <b>+ New route</b>.</div>';return;}
+    rs.sort(function(a,b){return (a.name||"").localeCompare(b.name||"");});
+    box.innerHTML=rs.map(function(r){
+      var pub=!!pubRoutes[r.id],dirty=pub&&!!draftRoutes[r.id],valid=r.nodes.filter(function(n){return live(entries[n]);}).length;
+      var total=r.totalTime!=null?r.totalTime:legSum(r);
+      var mb=routeMobcoins(r);
+      var pill=dirty?'<span class="pill draft">unsaved changes</span>':'<span class="pill '+(pub?"pub":"draft")+'">'+(pub?"published":"draft")+'</span>';
+      var lbl=pub?routeBestLabel(r.id):"";
+      var rst=pub?ratingStats(r.id):{count:0,avg:0};
+      var rstr=rst.count?' · <span class="rlist-stars">★</span>'+rst.avg.toFixed(1)+' ('+rst.count+')':"";
+      var gr=routeGrade(r),gstr="";
+      if(gr.chestNodes||gr.missing)gstr=' · <span class="rgrade" style="color:'+gradeColor(gr.overall)+'" title="'+
+        esc(gradeTip(gr))+'">'+(gr.missing?"⚠":"◈")+' '+gradeLetter(gr.overall)+'</span>';
+      return '<div class="routeitem'+(activeRoute===r.id?" active":"")+'" data-id="'+esc(r.id)+'">'+
+        '<div class="rt"><span class="rname">'+esc(r.name||"Untitled")+'</span>'+pill+'</div>'+
+        '<div class="rmeta">'+valid+' stop'+(valid===1?"":"s")+(total!=null?' · ~'+fmtTime(total):"")+(mb.total>0?' · ~'+fmtAmt(mb.total)+' mobcoins'+(mb.capped?"*":""):"")+rstr+gstr+(r.author?' · by '+esc(r.author):"")+'</div>'+
+        (lbl?'<div class="rmeta" style="color:var(--accent)">'+lbl+'</div>':"")+
+        '<div class="rbtns">'+
+          '<button class="act ed-only" data-act="edit">'+(activeRoute===r.id?"Building…":"Edit / build")+'</button>'+
+          '<button class="act" data-act="open">Details</button>'+
+          '<button class="act danger ed-only" data-act="del">Delete</button>'+
+        '</div></div>';
+    }).join("");
+  }
+  function legSum(r){if(!r.legTimes||!r.legTimes.length)return null;var s=0,any=false;r.legTimes.forEach(function(t){if(t!=null){s+=t;any=true;}});return any?s:null;}
+  el("routelist").addEventListener("click",function(e){
+    var it=e.target.closest(".routeitem");if(!it)return;var id=it.dataset.id,act=e.target.closest("[data-act]");
+    if(!act)return;
+    if(act.dataset.act==="edit"){activeRoute=(activeRoute===id?null:id);setTool(activeRoute?"route":"select");render();}
+    else if(act.dataset.act==="open"){openRouteEditor(id);}
+    else if(act.dataset.act==="del"){deleteRoute(id);}
+  });
+  el("newRoute").addEventListener("click",function(){
+    var r={id:uid(),type:"route",name:"New route",nodes:[],totalTime:null,legTimes:[],author:"",note:""};
+    draftRoutes[r.id]=r;saveDrafts();activeRoute=r.id;setTool("route");render();
+    toast("Route started — click chests on the map to add stops");
+  });
+  function deleteRoute(id){
+    var r=routeById(id);if(!r)return;
+    if(!confirm('Delete route "'+(r.name||"Untitled")+'"'+(pubRoutes[id]?" for everyone":"")+"?"))return;
+    if(pubRoutes[id]){persist({id:id,type:"route",nodes:[]},true).then(function(){toast("Route deleted");}).catch(function(e){toast("⚠ Delete failed: "+(e&&e.message||"error"));refresh(true);});}
+    delete draftRoutes[id];saveDrafts();
+    if(activeRoute===id)activeRoute=null;
+    render();
+  }
+
+  /* ---------- route editor modal ---------- */
+  var editingRoute=null;
+  function openRouteEditor(id){
+    var r=routeById(id);if(!r)return; editingRoute=id;
+    el("rName").value=r.name||""; el("rAuthor").value=r.author||"";
+    if(r.totalTime!=null){var tt=Math.round(r.totalTime);el("rTotal").value=Math.floor(tt/60)+":"+("0"+(tt%60)).slice(-2);}
+    else el("rTotal").value="";
+    el("rPublish").textContent=pubRoutes[id]?"Update published":"Publish";
+    el("rPublish").disabled=shared!==true;
+    renderRouteNodes(r);
+    renderRouteFreshness(r);
+    syncRouteHint(id);
+    renderRatingUI(id);
+    el("rOverlay").classList.add("open"); el("rName").focus();
+  }
+  function renderRouteFreshness(r){
+    var box=el("rFresh");if(!box)return;
+    var gr=routeGrade(r);
+    if(!gr.chestNodes&&!gr.missing){box.innerHTML="";return;}  // mob/group-only route: nothing gradable
+    var L=gradeLetter(gr.overall),col=gradeColor(gr.overall);
+    var line='<b style="color:'+col+'">◈ Reliability '+L+'</b> · '+Math.round(gr.overall*100)+'%';
+    if(gr.chestNodes)line+=' — '+gr.proven+'/'+gr.chestNodes+' stop'+(gr.chestNodes>1?"s":"")+' opened recently';
+    if(gr.legN)line+=' · '+Math.round((gr.leg||0)*100)+'% leg-time confidence';
+    var warn="";
+    if(gr.missing&&!gr.chestNodes)warn='⚠ All '+gr.missing+' of this route\'s chest stops have been removed from the map — it is out of date. Re-open it in Route mode to rebuild it.';
+    else if(gr.missing)warn='⚠ '+gr.missing+' stop'+(gr.missing>1?"s are":" is")+' no longer on the map — this route is out of date. Re-open it in Route mode to fix the stops.';
+    else if(gr.neverOpened>=Math.max(2,Math.ceil(gr.chestNodes*0.4)))
+      warn='⚠ '+gr.neverOpened+' stop'+(gr.neverOpened>1?"s have":" has")+' never been logged as opened — its freshness is unverified and it may have been removed.';
+    else if(gr.overall<0.4)warn='⚠ No one has confirmed this loot in a while — some chests may have been removed or relocated.';
+    box.innerHTML=line+(warn?'<div style="color:var(--warn);margin-top:2px">'+warn+'</div>':"");
+  }
+
+  /* ---------- route ratings + comments (keyless, merge-protected) ---------- */
+  function ignSlug(s){return (String(s||"").trim().toLowerCase().replace(/[^\w]+/g,"-")
+    .replace(/^-+|-+$/g,"").slice(0,24))||"anon";}
+  function ratingStats(routeId){
+    var by=ratings[routeId]||{},ks=Object.keys(by),sum=0;
+    for(var i=0;i<ks.length;i++)sum+=+by[ks[i]].stars||0;
+    return {count:ks.length,avg:ks.length?sum/ks.length:0,by:by};
+  }
+  var rRateVal=0;
+  function drawStars(sel){
+    var box=el("rStars");box.innerHTML="";
+    for(var s=1;s<=5;s++){
+      var sp=document.createElement("span");
+      sp.className="st"+(s<=sel?" on":"");sp.textContent="★";sp.dataset.s=s;
+      sp.setAttribute("role","radio");sp.setAttribute("aria-checked",s===sel?"true":"false");
+      sp.title=s+" star"+(s>1?"s":"");
+      box.appendChild(sp);
+    }
+  }
+  function renderRatingUI(routeId){
+    var isPub=!!pubRoutes[routeId];
+    el("rRateFld").hidden=!isPub;                    // only shared routes can be rated
+    if(!isPub)return;
+    var st=ratingStats(routeId);
+    el("rRateAvg").textContent=st.count?("· "+st.avg.toFixed(1)+"★ from "+st.count+" "+
+      (st.count===1?"rating":"ratings")):"· no ratings yet — be the first";
+    var mine=me?st.by[ignSlug(me.ign)]:null;
+    rRateVal=mine?(+mine.stars||0):0;
+    drawStars(rRateVal);
+    el("rComment").value=mine?(mine.comment||""):"";
+    el("rRateBtn").textContent=mine?"Update":"Rate";
+    el("rRateBtn").disabled=!signedIn();
+    el("rRateHint").textContent=signedIn()?"":"Sign in (top-right) to rate — it verifies you rate as yourself.";
+    var rows=Object.keys(st.by).map(function(k){return st.by[k];})
+      .filter(function(x){return x.comment;})
+      .sort(function(a,b){return (b.at||0)-(a.at||0);});
+    el("rComments").innerHTML=rows.slice(0,50).map(function(x){
+      return '<div class="rc"><span class="rlist-stars">'+"★".repeat(Math.max(1,Math.min(5,x.stars)))+
+        '</span> <span class="who">'+esc(x.ign||"anon")+"</span> — "+esc(x.comment)+"</div>";
+    }).join("");
+  }
+  el("rStars").addEventListener("click",function(e){
+    var t=e.target.closest("[data-s]");if(!t)return;
+    rRateVal=+t.dataset.s;drawStars(rRateVal);
+  });
+  el("rRateBtn").addEventListener("click",function(){
+    var id=editingRoute;if(!id||!pubRoutes[id])return;
+    if(shared!==true){el("rRateHint").textContent="Shared map not connected — ratings need it.";return;}
+    if(!signedIn()){el("rRateHint").textContent="Sign in (top-right) to rate.";return;}
+    if(!rRateVal){el("rRateHint").textContent="Pick 1–5 stars first.";return;}
+    var slug=ignSlug(me.ign);
+    var mine={stars:rRateVal,comment:el("rComment").value.trim().slice(0,300),ign:me.ign.slice(0,20),at:Date.now()};
+    var entry={id:"rate-"+id,type:"rating",route:id,by:{}};entry.by[slug]=mine;
+    el("rRateBtn").disabled=true;
+    fetch(API,{method:"POST",headers:writeHeaders(),body:JSON.stringify(entry)})
+      .then(function(r){if(!r.ok)return r.json().then(function(j){throw new Error(j.error||("http "+r.status));},function(){throw new Error("http "+r.status);});return r.json().catch(function(){return{};});})
+      .then(function(){
+        ratings[id]=ratings[id]||{};ratings[id][slug]=mine;   // optimistic; refresh reconciles
+        el("rRateHint").textContent="Thanks — your rating is saved.";
+        renderRatingUI(id);renderRouteList();return refresh(true);
+      })
+      .catch(function(e){el("rRateHint").textContent="Couldn't save: "+(e&&e.message||"error");})
+      .finally(function(){el("rRateBtn").disabled=false;});
+  });
+  function syncRouteHint(id){
+    var pub=!!pubRoutes[id],dirty=pub&&!!draftRoutes[id];
+    if(shared!==true)el("rHint").textContent="Shared map not connected — publishing is disabled; drafts stay on this device.";
+    else if(dirty)el("rHint").innerHTML='Unsaved local changes — <b>Update published</b> shares them · <button class="tinylink" id="rDiscard" type="button">discard my changes</button>';
+    else el("rHint").textContent=pub?"This route is shared with everyone.":"Draft — saved on this device until you publish.";
+  }
+  el("rHint").addEventListener("click",function(e){
+    if(e.target&&e.target.id==="rDiscard"&&editingRoute){
+      delete draftRoutes[editingRoute];saveDrafts();
+      if(routeById(editingRoute))openRouteEditor(editingRoute);
+      else el("rOverlay").classList.remove("open");
+      render();
+    }
+  });
+  function renderRouteNodes(r){
+    var box=el("rNodes");
+    syncRouteCoins(r);
+    if(!r.nodes.length){box.innerHTML='<div class="empty">No stops yet — in Route mode, click chests, groups or mobs on the map.</div>';return;}
+    box.innerHTML=r.nodes.map(function(nid,i){
+      var m=entries[nid],nm=live(m)?(m.name||(m.kind==="group"?("Group of "+m.count):m.kind==="mob"?(catInfo(m.category||"normal").name+" mob"):"Chest")):(m?"⚠ removed":"⚠ missing");
+      var leg=(r.legTimes&&r.legTimes[i]!=null)?Math.floor(r.legTimes[i]/60)+":"+("0"+(r.legTimes[i]%60)).slice(-2):"";
+      return '<div style="display:flex;align-items:center;gap:6px;padding:3px 2px" data-i="'+i+'">'+
+        '<span class="mono" style="color:var(--text3);width:18px">'+(i+1)+'</span>'+
+        '<span style="flex:1;font-size:12.5px">'+esc(nm)+'</span>'+
+        (i<r.nodes.length-1?'<input type="text" value="'+esc(leg)+'" placeholder="leg" data-leg="'+i+'" style="width:56px;height:26px;font-size:12px" title="Time to next stop (mm:ss)">':'<span style="width:56px"></span>')+
+        '<button class="tinylink" data-up="'+i+'" '+(i===0?"disabled":"")+' title="Move up">▲</button>'+
+        '<button class="tinylink" data-rm="'+i+'" title="Remove" style="color:var(--accent)">✕</button>'+
+        '</div>';
+    }).join("");
+  }
+  function cap(s){return s?s.charAt(0).toUpperCase()+s.slice(1):s;}
+  el("rNodes").addEventListener("click",function(e){
+    var r=routeById(editingRoute);if(!r)return;
+    var up=e.target.closest("[data-up]"),rm=e.target.closest("[data-rm]");
+    if(up){var i=+up.dataset.up;if(i>0){swap(r.nodes,i,i-1);if(r.legTimes&&i<=r.legTimes.length-1)swap(r.legTimes,i-1,i);persistDraftEdit(r);renderRouteNodes(r);renderRouteFreshness(r);render();}}
+    else if(rm){var j=+rm.dataset.rm;r.nodes.splice(j,1);if(r.legTimes&&r.legTimes.length)r.legTimes.splice(Math.min(j,r.legTimes.length-1),1);persistDraftEdit(r);renderRouteNodes(r);renderRouteFreshness(r);render();}
+  });
+  el("rNodes").addEventListener("input",function(e){
+    var r=routeById(editingRoute);if(!r||!e.target.dataset.leg)return;
+    var i=+e.target.dataset.leg; r.legTimes=r.legTimes||[]; r.legTimes[i]=parseTime(e.target.value);
+    persistDraftEdit(r);drawRoutes();
+  });
+  function swap(a,i,j){var t=a[i];a[i]=a[j];a[j]=t;}
+  function persistDraftEdit(r){
+    // copy-on-write: editing a published route forks a local "unsaved changes" shadow that
+    // survives polls and refreshes until "Update published" commits it (or it's discarded)
+    if(pubRoutes[r.id]&&draftRoutes[r.id]!==r)draftRoutes[r.id]=JSON.parse(JSON.stringify(r));
+    else draftRoutes[r.id]=r;
+    saveDrafts();
+  }
+  el("rName").addEventListener("input",function(){var r=routeById(editingRoute);if(r){r.name=this.value;persistDraftEdit(r);renderRouteList();}});
+  el("rAuthor").addEventListener("input",function(){var r=routeById(editingRoute);if(r){r.author=this.value;persistDraftEdit(r);}});
+  el("rTotal").addEventListener("input",function(){var r=routeById(editingRoute);if(r){r.totalTime=parseTime(this.value);persistDraftEdit(r);renderRouteList();}});
+  el("rCancel").addEventListener("click",function(){el("rOverlay").classList.remove("open");});
+  el("rDelete").addEventListener("click",function(){var id=editingRoute;el("rOverlay").classList.remove("open");deleteRoute(id);});
+  el("rPublish").addEventListener("click",function(){
+    var r=routeById(editingRoute);if(!r)return;
+    if(shared!==true){el("rHint").textContent="Publishing needs the shared map connection — your draft is safe on this device.";return;}
+    if(!r.nodes.length){el("rHint").textContent="Add at least one stop before publishing.";return;}
+    r.name=el("rName").value.trim()||"Untitled route"; r.author=el("rAuthor").value.trim(); r.totalTime=parseTime(el("rTotal").value);
+    var payload={id:r.id,type:"route",name:r.name,nodes:r.nodes.slice(),totalTime:r.totalTime,legTimes:(r.legTimes||[]).slice(0,Math.max(0,r.nodes.length-1)),author:r.author,note:r.note||""};
+    el("rPublish").disabled=true;
+    persist(payload,false).then(function(){
+      delete draftRoutes[r.id];saveDrafts();  // now lives in shared
+      toast("Route published for everyone");
+      el("rOverlay").classList.remove("open");
+    }).catch(function(e){el("rHint").textContent="Couldn't publish: "+(e&&e.message||"error");})
+    .finally(function(){el("rPublish").disabled=false;});
+  });
+
+  /* ---------- tools ---------- */
+  function setTool(t){
+    tool=t;
+    Array.prototype.slice.call(el("tools").children).forEach(function(b){b.classList.toggle("on",b.dataset.tool===t);});
+    viewport.classList.toggle("placing",t==="chest"||t==="group"||t==="mob"||t==="teleport");
+    if(t!=="route"&&activeRoute){/* keep active route selected but stop adding */}
+  }
+  el("tools").addEventListener("click",function(e){var b=e.target.closest("[data-tool]");if(b)setTool(b.dataset.tool);});
+  ["chest","group","mob","teleport","route"].forEach(function(k){
+    el("f"+cap(k)).addEventListener("change",function(){filters[k]=this.checked;render();});
+  });
+
+  /* ---------- pointer interaction (pan / zoom / place / move / select) ---------- */
+  var drag=null;
+  viewport.addEventListener("pointerdown",function(e){
+    if(e.button!==0&&e.button!==1&&e.button!==2)return;
+    var apt=areaDraw?e.target.closest(".areapt"):null;
+    if(apt&&e.button===2){ // right-click a corner handle: remove that corner
+      areaDraw.points.splice(+apt.dataset.idx,1);
+      drawAreas();
+      e.preventDefault();
+      return;
+    }
+    var mk=e.target.closest(".marker");
+    var isCluster=!!(mk&&mk.dataset.cluster); // cluster badges toggle on click, pan on drag
+    drag={x0:e.clientX,y0:e.clientY,px:panX,py:panY,moved:false,
+      pan:(e.button!==0)||e.shiftKey||(tool==="select"&&(!mk||isCluster))||((tool==="chest"||tool==="group"||tool==="mob"||tool==="teleport"||tool==="route")&&(!mk||isCluster)),
+      marker:(tool==="select"&&mk&&!isCluster)?mk:null,
+      mid:mk?mk.dataset.id:null,
+      target:mk,
+      // pointer capture retargets later events to the viewport, so labels/handles must be
+      // grabbed HERE — a click listener on them would never fire
+      albl:e.target.closest(".arealabel"),
+      areapt:(apt&&e.button===0)?apt:null,
+      aidx:apt?+apt.dataset.idx:-1};
+    if(drag.areapt)drag.pan=false; // dragging a corner handle, never the map
+    viewport.setPointerCapture(e.pointerId);
+    if(drag.pan)viewport.classList.add("panning");
+    if(e.button===1||e.button===2)e.preventDefault();
+  });
+  viewport.addEventListener("pointermove",function(e){
+    if(!drag)return;
+    var dx=e.clientX-drag.x0,dy=e.clientY-drag.y0;
+    if(!drag.moved&&Math.abs(dx)+Math.abs(dy)>4)drag.moved=true;
+    if(!drag.moved)return;
+    if(drag.areapt&&areaDraw){
+      var fa=clientToFrac(e.clientX,e.clientY);
+      areaDraw.points[drag.aidx]=[fa.x,fa.y];
+      drawAreas();
+    }else if(drag.marker){
+      var f=clientToFrac(e.clientX,e.clientY);
+      drag.marker.style.left=(f.x*100)+"%"; drag.marker.style.top=(f.y*100)+"%";
+      var m=entries[drag.mid]; if(m){m.x=f.x;m.y=f.y;} drawRoutes();
+    }else if(drag.pan){
+      panX=drag.px+dx; panY=drag.py+dy; applyTransform();
+    }
+  });
+  viewport.addEventListener("pointerup",function(e){
+    if(!drag)return; viewport.classList.remove("panning");
+    var wasClick=!drag.moved;
+    if(wasClick){
+      if(calMode){ // calibration point picking takes precedence over tools
+        var cf=clientToFrac(e.clientX,e.clientY);
+        drag=null;
+        calPointPicked(cf);
+        return;
+      }
+      if(areaDraw){ // area-boundary drawing/editing
+        if(drag.areapt){ // clicking an existing corner snaps the shape closed
+          drag=null;
+          areaDrawFinish();
+          return;
+        }
+        var af=clientToFrac(e.clientX,e.clientY);
+        drag=null;
+        areaPointPicked(af);
+        return;
+      }
+      if(drag.albl){ // clicked an area label — editors get the edit/rename/delete menu
+        var aLb=areasLog[drag.albl.dataset.areaId];
+        drag=null;
+        if(aLb&&canEdit())openAreaMenu(aLb,e.clientX,e.clientY);
+        return;
+      }
+      if(drag.target&&drag.target.dataset.pending){ // pending chest request
+        verifyPending(drag.target.dataset.pending);
+      }else if(drag.target&&drag.target.dataset.cluster){ // cluster badge: toggle expand
+        var ck=drag.target.dataset.cluster;
+        expandedCluster=(expandedCluster===ck)?null:ck;
+        render();
+      }else if(drag.target){ // clicked a marker
+        var id=drag.target.dataset.id;
+        if(tool==="route")addToActiveRoute(id);
+        else openMarkerEditor(id);
+      }else if(tool==="chest"||tool==="group"||tool==="mob"||tool==="teleport"){
+        var f=clientToFrac(e.clientX,e.clientY);
+        newMarkerAt(tool,f.x,f.y);
+      }else if(tool==="select"&&expandedCluster){ // empty click collapses the fan
+        expandedCluster=null;render();
+      }
+    }else if(drag.marker&&drag.mid){
+      var m=entries[drag.mid];
+      if(m)persist(m,false).then(function(){toast("Moved");}).catch(function(e){toast("⚠ Move not saved: "+(e&&e.message||"error"));refresh(true);});
+    }
+    drag=null;
+  });
+  viewport.addEventListener("contextmenu",function(e){e.preventDefault();});
+  viewport.addEventListener("wheel",function(e){
+    e.preventDefault();
+    var r=viewport.getBoundingClientRect();
+    zoomAt(e.clientX-r.left,e.clientY-r.top,e.deltaY<0?1.15:1/1.15);
+  },{passive:false});
+  el("zoomIn").addEventListener("click",function(){zoomAt(viewport.clientWidth/2,viewport.clientHeight/2,1.3);});
+  el("zoomOut").addEventListener("click",function(){zoomAt(viewport.clientWidth/2,viewport.clientHeight/2,1/1.3);});
+  el("fitBtn").addEventListener("click",fit);
+  window.addEventListener("resize",function(){applyTransform();});
+
+  /* ---------- calibration: align world X/Z to map fractions ---------- */
+  var calMode=0,calPts=[]; // 0 off, 1 waiting for point A, 2 waiting for point B
+  function worldToMap(wx,wz){
+    if(!calibration)return null;
+    return{x:calibration.ax*wx+calibration.bx,y:calibration.az*wz+calibration.bz};
+  }
+  function calStop(msg){calMode=0;calPts=[];viewport.classList.remove("calibrating");if(msg)toast(msg);}
+  el("calBtn").addEventListener("click",function(){
+    if(calMode){calStop("Calibration cancelled");return;}
+    var state=calibration?"Currently calibrated"+(calibration.setBy?" by "+calibration.setBy:"")+" — redoing it replaces the shared alignment.":"Not calibrated yet.";
+    if(!confirm("Align in-game coordinates to the map.\n\n"+state+"\n\nYou'll click 2 known spots on the map (far apart, e.g. two teleports) and type each spot's in-game X and Z. After that, markers can be placed straight from world coordinates (and the capture app can auto-place chests).\n\nStart?"))return;
+    calMode=1;calPts=[];viewport.classList.add("calibrating");
+    toast("Click known spot 1 on the map");
+  });
+  function calPointPicked(f){
+    var label=calMode===1?"spot 1":"spot 2";
+    var raw=prompt("In-game X and Z at "+label+" (from the minimap or F7), e.g.  60 -64");
+    if(raw==null){calStop("Calibration cancelled");return;}
+    var m=String(raw).trim().match(/^(-?\d+(?:\.\d+)?)[\s,\/]+(-?\d+(?:\.\d+)?)$/);
+    if(!m){calStop("Couldn't read those coordinates — calibration cancelled");return;}
+    calPts.push({u:f.x,v:f.y,wx:parseFloat(m[1]),wz:parseFloat(m[2])});
+    if(calMode===1){calMode=2;toast("Click known spot 2 — far from spot 1");return;}
+    var a=calPts[0],b=calPts[1];
+    if(Math.abs(a.wx-b.wx)<10||Math.abs(a.wz-b.wz)<10){calStop("Spots too close together (need >10 blocks apart on both X and Z) — try again with two distant spots");return;}
+    var ax=(b.u-a.u)/(b.wx-a.wx),bx=a.u-ax*a.wx;
+    var az=(b.v-a.v)/(b.wz-a.wz),bz=a.v-az*a.wz;
+    calStop();
+    if(!confirm("Save this calibration"+(shared?" for everyone":"")+"?\n\n1 block ≈ "+(Math.abs(ax)*baseW).toFixed(2)+" map px (X) / "+(Math.abs(az)*baseH).toFixed(2)+" map px (Z)"))
+      {toast("Calibration discarded");return;}
+    persist({id:"calibration",type:"calibration",ax:ax,bx:bx,az:az,bz:bz,setBy:""},false)
+      .then(function(){
+        toast("Calibrated — markers can now be placed from world coordinates.");
+        // Calibrating NEVER moves existing pins (they keep their stored map positions, so manual
+        // nudges survive). After a map-image swap that's exactly the trap — so measure the
+        // disagreement right now and OFFER the fix instead of leaving a shifted map.
+        var mi=misalignInfo();
+        if(misalignActive(mi)&&canEdit()){
+          setTimeout(function(){
+            if(confirm(mi.stale.length+" existing pins still sit where the PREVIOUS alignment put them (they don't move on their own — your drag-nudges would be lost silently).\n\nRe-align all pins and area outlines to this new calibration now?"))
+              el("realignBtn").click();
+            else checkAlignment();
+          },100);
+        }
+      })
+      .catch(function(e2){toast("⚠ Couldn't save calibration: "+(e2&&e2.message||"error"));});
+  }
+
+  /* Re-align every CHEST pin onto the CURRENT calibration from its stored world coordinates. This is a
+     DELIBERATE, one-off action (not run automatically on calibration) for when the map IMAGE changes:
+     the chests' in-game coords are unchanged, but their stored map fractions were relative to the OLD
+     image, so re-calibrating alone leaves them misplaced. It snaps each chest that carries world coords
+     to where the new transform puts it — which also DISCARDS any manual drag-nudges (fine after a map
+     swap, since those were relative to the old image). Left untouched: pins with no world coords (can't
+     be derived), chests whose coords fall OUTSIDE the new map (skipped, like the single-pin tool, not
+     piled on the border), and MOBS (re-POSTing a legacy mob would zero its spawnAmount → its mobcoins). */
+  /* How far the STORED pin positions sit from where the CURRENT calibration puts their saved world
+     coords. Big, consistent disagreement = the map image / calibration changed but the pins were
+     never re-aligned (the classic "everything shifted" symptom). Returns null when too few
+     coord-bearing pins exist to judge. */
+  function misalignInfo(){
+    if(!calibration)return null;
+    // `stale` is the subset that actually disagrees (>2%) — pins placed AFTER a recalibration sit
+    // exactly on the new alignment, and averaging them in would dilute both the warning and the
+    // area fit (a map mixing old and new pins would then look "mostly fine" while its old half is
+    // visibly shifted). The fit below must learn old->new from the STALE generation only.
+    var pairs=[],stale=[],ds=[];
+    for(var id in entries){var m=entries[id];
+      if(!live(m)||m.gx==null||m.gz==null||m.x==null||m.y==null)continue;
+      if(m.kind!=="chest"&&m.kind!=="group"&&m.kind!=="teleport")continue;
+      var p=worldToMap(m.gx,m.gz);if(!p)continue;
+      var pr={ox:m.x,oy:m.y,nx:p.x,ny:p.y},d=Math.max(Math.abs(m.x-p.x),Math.abs(m.y-p.y));
+      pairs.push(pr);ds.push(d);
+      if(d>0.02)stale.push(pr);
+    }
+    if(pairs.length<5)return null;
+    ds.sort(function(a,b){return a-b;});
+    return {pairs:pairs,stale:stale,median:ds[Math.floor(ds.length/2)],n:pairs.length};
+  }
+  // "the map is genuinely out of alignment": enough stale pins that it can't just be a few manual
+  // drag-nudges (those are deliberate and must never trip the warning)
+  function misalignActive(mi){return !!(mi&&mi.stale.length>=5&&mi.stale.length>=0.05*mi.n);}
+  function fitAxis(xs,ys){ // least-squares ys ≈ s*xs+t; null when the points have no spread
+    var n=xs.length,sx=0,sy=0,sxx=0,sxy=0;
+    for(var i=0;i<n;i++){sx+=xs[i];sy+=ys[i];sxx+=xs[i]*xs[i];sxy+=xs[i]*ys[i];}
+    var den=n*sxx-sx*sx;
+    if(n<8||Math.abs(den)<1e-9)return null;
+    var s=(n*sxy-sx*sy)/den,t=(sy-s*sx)/n,mr=0;
+    for(var j=0;j<n;j++){var r=Math.abs(s*xs[j]+t-ys[j]);if(r>mr)mr=r;}
+    return {s:s,t:t,maxResid:mr};
+  }
+  /* Everything one ⤾ Re-align pass should write. Markers move to their calibration-exact spot from
+     saved world coords. AREA polygons store no world coords, so they ride the least-squares fit of
+     old-position -> new-position learned from the misaligned pins — computed BEFORE those pins move
+     (their stale positions ARE the old alignment). The fit must be tight (every pin within 2% of a
+     pure axis-aligned rescale) or areas are left alone — a sloppy fit must never smear the polygons. */
+  function realignPlan(){
+    var moves=[],offmap=0;
+    for(var id in entries){
+      var m=entries[id];
+      if(!live(m)||m.gx==null||m.gz==null)continue;          // needs saved world coords
+      if(m.kind!=="chest"&&m.kind!=="group"&&m.kind!=="teleport")continue;  // mobs skipped (re-POST would zero legacy spawnAmount)
+      var p=worldToMap(m.gx,m.gz); if(!p)continue;
+      if(p.x<-0.02||p.x>1.02||p.y<-0.02||p.y>1.02){offmap++;continue;}  // outside the new map — skip, don't clamp to a corner
+      var nx=Math.max(0,Math.min(1,p.x)),ny=Math.max(0,Math.min(1,p.y));
+      if(m.x==null||Math.abs(nx-(m.x||0))>0.0015||Math.abs(ny-(m.y||0))>0.0015)
+        moves.push(Object.assign({},m,{x:nx,y:ny}));
+    }
+    var areaMoves=[],areaNote="",mi=misalignInfo();
+    if(misalignActive(mi)&&Object.keys(areasLog).length){
+      // Learn old->new from the STALE pins only (they alone encode the old alignment — pins placed
+      // after the recalibration are identity pairs and would drag the fit toward "no change").
+      // Guards, in order of what they protect against:
+      //   >=12 stale pins  — too few points to trust a regression;
+      //   span >= 0.4      — a fit from one tight cluster extrapolates badly: a small tilt that's
+      //                      invisible in-sample can displace a far-away area corner by more than
+      //                      the misalignment being fixed (error grows with distance/spread);
+      //   maxResid < 0.02  — hand-nudged or mixed pins make it not a clean affine; skip rather than
+      //                      smear the polygons with a sloppy transform.
+      var sox=mi.stale.map(function(p){return p.ox;}),soy=mi.stale.map(function(p){return p.oy;});
+      var spanX=Math.max.apply(null,sox)-Math.min.apply(null,sox);
+      var spanY=Math.max.apply(null,soy)-Math.min.apply(null,soy);
+      var fx=mi.stale.length>=12?fitAxis(sox,mi.stale.map(function(p){return p.nx;})):null;
+      var fy=mi.stale.length>=12?fitAxis(soy,mi.stale.map(function(p){return p.ny;})):null;
+      if(fx&&fy&&fx.maxResid<0.02&&fy.maxResid<0.02&&spanX>=0.4&&spanY>=0.4){
+        for(var aid in areasLog){var a=areasLog[aid];
+          if(!a||!Array.isArray(a.points))continue;
+          var pts=a.points.map(function(q){
+            return [Math.max(0,Math.min(1,fx.s*q[0]+fx.t)),Math.max(0,Math.min(1,fy.s*q[1]+fy.t))];
+          });
+          areaMoves.push(Object.assign({},a,{points:pts}));
+        }
+      }else{
+        // never silent: the editor must know the polygons still need hand-fixing
+        areaNote=mi.stale.length<12?"too few out-of-place pins to fit a reliable transform"
+          :(spanX<0.4||spanY<0.4)?"the out-of-place pins cluster in one part of the map (a fit from them would warp far-away corners)"
+          :"the out-of-place pins don't fit one clean shift (hand-nudged pins?)";
+      }
+    }
+    return {moves:moves,areaMoves:areaMoves,areaNote:areaNote,offmap:offmap};
+  }
+  el("realignBtn").addEventListener("click",function(){
+    if(!canEdit()){toast("Editor access required to re-align pins");return;}
+    if(!calibration){toast("Calibrate first (🎯), then re-align");return;}
+    var plan=realignPlan();
+    if(!plan.moves.length&&!plan.areaMoves.length){
+      toast(plan.offmap?("No pins to move — "+plan.offmap+" fall outside the new map (check coords/calibration)"):"All pins already line up with this alignment");return;}
+    if(!confirm("Re-align "+plan.moves.length+" pin"+(plan.moves.length===1?"":"s")+" (chests, groups, teleports)"
+      +(plan.areaMoves.length?(" and "+plan.areaMoves.length+" area boundar"+(plan.areaMoves.length===1?"y":"ies")):"")
+      +" to the current map?\n\n"
+      +"⚠ Use this after swapping the MAP IMAGE. Pins snap to where their saved in-game coordinates land, "
+      +"DISCARDING any manual drag-adjustments (they were relative to the old image). "
+      +(plan.areaMoves.length?"Area outlines are refitted to the new image the same way. ":"")
+      +(plan.areaNote?("\n\n⚠ Area outlines can NOT be auto-fitted this time — "+plan.areaNote+". They keep their current shape; redraw or drag them by hand afterwards.\n\n"):"")
+      +(shared?"Saves for everyone. ":"")
+      +(plan.offmap?(plan.offmap+" pin"+(plan.offmap===1?"":"s")+" fall outside the new map and are left as-is. "):"")))return;
+    replaceBulk(plan.moves.concat(plan.areaMoves));
+  });
+  /* Write a re-align's updates. Fast path: the editor bulk endpoint (100 entries/request — a
+     500-pin map lands in seconds). If the server doesn't know "bulk" yet (deploy lag), fall back
+     to the old one-at-a-time drip at the write-rate limit. */
+  /* 429 handling for BOTH write paths: exponential backoff (4s -> 64s) with a hard retry cap, then
+     an honest abort. The server only lets its 60s rate window LAPSE (it no longer re-arms it on
+     rejected requests), so backing off up to 64s guarantees recovery when this tab is the only
+     writer — and when something else on this IP keeps writing (the capture app), aborting with a
+     clear message beats spinning "Lining up pins…" forever. */
+  function backoff429(state){ // -> ms to wait, or null when out of patience
+    state.n=(state.n||0)+1;
+    if(state.n>8)return null;
+    return Math.min(64000,4000*Math.pow(2,state.n-1));
+  }
+  function replaceBulk(updates){
+    function applyLocal(list){list.forEach(function(u){if(u.type==="area")areasLog[u.id]=u;else entries[u.id]=u;});}
+    if(!shared){applyLocal(updates);saveLocal();drawAreas();render();toast("Re-placed "+updates.length+" entr"+(updates.length===1?"y":"ies")+" (this device)");return;}
+    var chunks=[];for(var i=0;i<updates.length;i+=100)chunks.push(updates.slice(i,i+100));
+    var ci=0,done=0,thr={};
+    function step(){
+      if(ci>=chunks.length){
+        toast("✓ Re-aligned "+done+" entr"+(done===1?"y":"ies")+" — refreshing");
+        refresh(true).then(checkAlignment);return;
+      }
+      var chunk=chunks[ci];
+      toast("Re-aligning… "+Math.min(done+chunk.length,updates.length)+"/"+updates.length);
+      fetch(API,{method:"POST",headers:writeHeaders(),body:JSON.stringify({type:"bulk",entries:chunk})})
+        .then(function(r){
+          if(r.status===429){ // throttled — back off, retry this chunk; give up after ~4 min
+            var w=backoff429(thr);
+            if(w==null)throw{rateLimited:true};
+            toast("Server is rate-limiting — waiting "+Math.round(w/1000)+"s… ("+done+"/"+updates.length+" done)");
+            return new Promise(function(res){setTimeout(res,w);});
+          }
+          if(r.ok){applyLocal(chunk);done+=chunk.length;ci++;thr={};render();return;}
+          throw new Error("bulk http "+r.status);
+        })
+        .then(function(){setTimeout(step,400);})
+        .catch(function(e){
+          if(e&&e.rateLimited){toast("⚠ Rate-limited for too long — "+done+"/"+updates.length+" saved. Wait a minute (and pause the capture app), then press ⤾ again to finish.");refresh(true).then(checkAlignment);return;}
+          replaceDrip(updates.slice(done)); // older API without bulk — drip the rest
+        });
+    }
+    step();
+  }
+  function replaceDrip(updates){ // legacy path: one entry per POST at the ~30/min write limit
+    var i=0,ok=0,fail=0,thr={};
+    function step(){
+      if(i>=updates.length){
+        toast("Re-placed "+ok+" entr"+(ok===1?"y":"ies")+(fail?", "+fail+" failed (press ⤾ again to retry)":"")+" — refreshing");
+        refresh(true).then(checkAlignment);return;
+      }
+      var upd=updates[i++];
+      toast("Lining up pins "+i+"/"+updates.length+"… (older server — this takes a while)");
+      fetch(API,{method:"POST",headers:writeHeaders(),body:JSON.stringify(upd)})
+        .then(function(r){
+          if(r.status===429){
+            i--;
+            var w=backoff429(thr);
+            if(w==null){toast("⚠ Rate-limited for too long — "+ok+"/"+updates.length+" saved. Wait a minute, then press ⤾ again to finish.");refresh(true).then(checkAlignment);return{halt:true};}
+            return new Promise(function(res){setTimeout(res,w);});
+          }
+          thr={};
+          if(r.ok){ok++;if(upd.type==="area")areasLog[upd.id]=upd;else entries[upd.id]=upd;render();}else fail++;
+        })
+        .catch(function(){fail++;})
+        .then(function(v){if(!(v&&v.halt))setTimeout(step,2100);});  // ~30 writes/min, matching the import cap
+    }
+    step();
+  }
+  /* Standing safety net: an editor whose pins visibly disagree with the live calibration gets told
+     exactly what to press, once per session — so "I recalibrated but everything is shifted" can't
+     go unexplained again. */
+  var alignWarned=false;
+  function checkAlignment(){
+    var mi=misalignInfo(),off=misalignActive(mi);
+    var rb=el("realignBtn"),mb=el("moreBtn");
+    if(rb)rb.classList.toggle("attn",off&&canEdit());
+    if(mb)mb.classList.toggle("attn",off&&canEdit());
+    if(off&&canEdit()&&!alignWarned){
+      alignWarned=true;
+      toast("⚠ "+mi.stale.length+" pins sit where the PREVIOUS map alignment put them — press ⋯ More → ⤾ Re-align pins to fix the whole map");
+    }
+    return off;
+  }
+  el("mFromCoords").addEventListener("click",function(){
+    var m=entries[editingMarker];if(!m||!calibration)return;
+    var wx=numOrNull(el("mGx").value),wz=numOrNull(el("mGz").value);
+    if(wx==null||wz==null){el("mErr").textContent="Fill in the X and Z coordinates first.";return;}
+    var p=worldToMap(wx,wz);
+    if(p.x<-0.02||p.x>1.02||p.y<-0.02||p.y>1.02){el("mErr").textContent="Those coordinates fall outside the map — double-check them (or recalibrate).";return;}
+    m.x=Math.max(0,Math.min(1,p.x));m.y=Math.max(0,Math.min(1,p.y));
+    render();highlight(m.id);el("mErr").textContent="";
+    toast("Marker positioned from coordinates — Save to keep it");
+  });
+
+  /* ---------- account: Hytale sign-in (device flow) ---------- */
+  el("editorBtn").addEventListener("click",function(){
+    if(signedIn())openAccount(); else startSignIn();
+  });
+  el("acClose").addEventListener("click",function(){el("acOverlay").classList.remove("open");});
+  el("acOverlay").addEventListener("mousedown",function(e){if(e.target===el("acOverlay"))el("acOverlay").classList.remove("open");});
+  var authPoll=null;
+  function stopPoll(){if(authPoll){clearTimeout(authPoll);authPoll=null;}}
+  function showAc(html){el("acBody").innerHTML=html;el("acOverlay").classList.add("open");}
+  function esc2(s){return String(s==null?"":s).replace(/[&<>"]/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c];});}
+  function startSignIn(){
+    stopPoll();
+    showAc('<div style="padding:6px 0;color:var(--text2)">Starting Hytale sign-in…</div>');
+    fetch(API,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({type:"authstart"})})
+      .then(function(r){return r.json().then(function(j){if(!r.ok)throw new Error(j.error||"error");return j;});})
+      .then(function(d){
+        var link=d.verificationUriComplete||d.verificationUri;
+        showAc(
+          '<p style="color:var(--text2);margin:0 0 12px">Sign in with your <b>Hytale account</b> to prove your in-game name. You do this on Hytale’s own site — this tool never sees your password.</p>'+
+          '<ol style="color:var(--text2);font-size:13px;line-height:1.7;padding-left:18px;margin:0 0 12px">'+
+          '<li>Open <a href="'+esc2(link)+'" target="_blank" rel="noopener" style="color:var(--accent)">'+esc2(d.verificationUri)+'</a></li>'+
+          '<li>Enter this code:</li></ol>'+
+          '<div style="font-family:ui-monospace,Menlo,Consolas,monospace;font-size:30px;font-weight:700;letter-spacing:3px;text-align:center;'+
+          'background:var(--card2);border:.5px solid var(--border2);border-radius:12px;padding:14px;margin:0 0 12px">'+esc2(d.userCode)+'</div>'+
+          '<a class="act primary" href="'+esc2(link)+'" target="_blank" rel="noopener" style="display:block;text-align:center;text-decoration:none">Open Hytale sign-in ↗</a>'+
+          '<div id="acStatus" style="margin-top:12px;color:var(--text3);font-size:12.5px">Waiting for you to approve…</div>');
+        var deadline=Date.now()+(Math.min(d.expiresIn||600,600))*1000;
+        var interval=Math.max(2,(d.interval||5))*1000;
+        (function poll(){
+          if(Date.now()>deadline){var s=el("acStatus");if(s)s.textContent="This code expired — close and try again.";return;}
+          authPoll=setTimeout(function(){
+            fetch(API,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({type:"authpoll",handle:d.handle})})
+              .then(function(r){return r.json().then(function(j){return {ok:r.ok,j:j};});})
+              .then(function(x){
+                if(!x.ok){var s=el("acStatus");if(s)s.textContent=x.j.error||"Sign-in failed — close and try again.";return;}
+                if(x.j.chooseFrom)return chooseProfile(d.handle,x.j.chooseFrom);
+                if(x.j.done)return finishSignIn(x.j);
+                poll(); // still pending
+              }).catch(function(){poll();});
+          },interval);
+        })();
+      })
+      .catch(function(e){showAc('<div style="color:var(--bad)">Could not start sign-in: '+esc2(e.message)+'</div>');});
+  }
+  function chooseProfile(handle,list){
+    stopPoll();
+    showAc('<p style="color:var(--text2);margin:0 0 12px">That account has several game profiles — pick the one to use here:</p>'+
+      list.map(function(p){return '<button class="act" data-uuid="'+esc2(p.uuid)+'" style="display:block;width:100%;text-align:left;margin:6px 0">'+esc2(p.username)+'</button>';}).join(""));
+    Array.prototype.forEach.call(el("acBody").querySelectorAll("[data-uuid]"),function(b){
+      b.addEventListener("click",function(){
+        el("acStatus")&&(el("acStatus").textContent="Linking…");
+        fetch(API,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({type:"authfinish",handle:handle,uuid:b.dataset.uuid})})
+          .then(function(r){return r.json().then(function(j){return {ok:r.ok,j:j};});})
+          .then(function(x){if(x.ok&&x.j.done)finishSignIn(x.j);else showAc('<div style="color:var(--bad)">'+esc2(x.j.error||"Couldn’t link that profile.")+'</div>');});
+      });
+    });
+  }
+  function finishSignIn(j){
+    stopPoll();
+    setPlayerKey(j.playerKey);
+    showAc('<div style="text-align:center;padding:6px 0">'+
+      '<div style="font-size:34px;margin-bottom:6px">✅</div>'+
+      '<div style="font-weight:650;font-size:16px">Signed in as '+esc2(j.ign)+'</div>'+
+      '<div style="color:var(--text3);font-size:12.5px;margin-top:2px">role: '+esc2(j.role)+'</div>'+
+      '<p style="color:var(--text2);font-size:13px;margin:14px 0 8px">Your personal key for the companion app — paste it into the app’s 🔑 field once and it remembers you:</p>'+
+      '<div style="display:flex;gap:8px"><input id="acKey" readonly value="'+esc2(j.playerKey)+'" style="flex:1;font-family:ui-monospace,monospace;font-size:12px;padding:8px;border-radius:8px;border:.5px solid var(--border2);background:var(--card2);color:var(--text)">'+
+      '<button class="act" id="acCopy">Copy</button></div>'+
+      '<div style="color:var(--text3);font-size:11.5px;margin-top:8px">Keep it private — it acts as you. You can reset it any time from this menu.</div>');
+    el("acCopy").addEventListener("click",function(){var i=el("acKey");i.select();try{document.execCommand("copy");}catch(e){}el("acCopy").textContent="Copied ✓";});
+    refresh(true);
+  }
+  function openAccount(){
+    showAc('<div style="text-align:center;padding:4px 0 10px">'+
+      '<div style="font-size:15px;font-weight:650">'+esc2(me.ign)+'</div>'+
+      '<div style="color:var(--text3);font-size:12.5px">role: '+esc2(me.role)+'</div></div>'+
+      '<button class="act" id="acShowKey" style="display:block;width:100%;margin:6px 0">Show my app key</button>'+
+      (isOwner()?'<button class="act" id="acEditors" style="display:block;width:100%;margin:6px 0">👥 Manage editors</button>':'')+
+      '<button class="act" id="acReset" style="display:block;width:100%;margin:6px 0">Reset my key (if it was leaked)</button>'+
+      '<button class="act danger" id="acOut" style="display:block;width:100%;margin:6px 0">Sign out of this device</button>');
+    el("acShowKey").addEventListener("click",function(){
+      showAc('<p style="color:var(--text2);font-size:13px;margin:0 0 8px">Paste this into the companion app’s 🔑 field:</p>'+
+        '<div style="display:flex;gap:8px"><input id="acKey" readonly value="'+esc2(playerKey)+'" style="flex:1;font-family:ui-monospace,monospace;font-size:12px;padding:8px;border-radius:8px;border:.5px solid var(--border2);background:var(--card2);color:var(--text)"><button class="act" id="acCopy">Copy</button></div>');
+      el("acCopy").addEventListener("click",function(){el("acKey").select();try{document.execCommand("copy");}catch(e){}el("acCopy").textContent="Copied ✓";});
+    });
+    if(isOwner()&&el("acEditors"))el("acEditors").addEventListener("click",openEditors);
+    el("acReset").addEventListener("click",function(){
+      if(!confirm("Reset your key by signing in again? Your current key stops working immediately — update it in the app afterwards."))return;
+      startSignIn();
+    });
+    el("acOut").addEventListener("click",function(){setPlayerKey("");me=null;el("acOverlay").classList.remove("open");syncEditorUI();toast("Signed out on this device");refresh(true);});
+  }
+  function openEditors(){
+    var players=[];for(var id in entries){var e=entries[id];if(e&&e.type==="player")players.push(e);}
+    players.sort(function(a,b){return String(a.ign).toLowerCase()<String(b.ign).toLowerCase()?-1:1;});
+    showAc('<p style="color:var(--text2);font-size:13px;margin:0 0 10px">Toggle editor rights on any signed-in player. Editors can add/edit map pins, routes, areas, verify submissions and run maintenance.</p>'+
+      (players.length?players.map(function(p){
+        var role=p.role||"player";
+        var chip=role==="owner"?'<span style="color:var(--accent);font-weight:600">owner</span>'
+          :'<button class="act'+(role==="editor"?' primary':'')+'" data-uuid="'+esc2(p.uuid)+'" data-to="'+(role==="editor"?"player":"editor")+'">'+(role==="editor"?"editor ✓":"make editor")+'</button>';
+        return '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:7px 0;border-top:.5px solid var(--border)"><span>'+esc2(p.ign)+'</span>'+chip+'</div>';
+      }).join(""):'<div style="color:var(--text3)">No one has signed in yet.</div>'));
+    Array.prototype.forEach.call(el("acBody").querySelectorAll("[data-uuid]"),function(b){
+      b.addEventListener("click",function(){
+        b.disabled=true;
+        fetch(API,{method:"POST",headers:writeHeaders(),body:JSON.stringify({type:"role",uuid:b.dataset.uuid,role:b.dataset.to})})
+          .then(function(r){return r.json().then(function(j){return {ok:r.ok,j:j};});})
+          .then(function(x){if(!x.ok){toast(x.j.error||"Couldn’t change role");b.disabled=false;return;}return refresh(true).then(openEditors);});
+      });
+    });
+  }
+
+  /* ---------- areas: editor-drawn polygon bounds + completion rollups ---------- */
+  var AREA_COLORS=["#7c6df2","#3fb6b2","#e0763a","#c95f8e","#7fae3f","#c9b23f"];
+  var areaDraw=null; // {points:[[x,y]..]} while an editor is drawing
+  function pointInPoly(x,y,pts){
+    var inside=false;
+    for(var i=0,j=pts.length-1;i<pts.length;j=i++){
+      var xi=pts[i][0],yi=pts[i][1],xj=pts[j][0],yj=pts[j][1];
+      // ray casting: TOGGLE on each crossing (an even count means outside)
+      if(((yi>y)!==(yj>y))&&(x<(xj-xi)*(y-yi)/(yj-yi)+xi))inside=!inside;
+    }
+    return inside;
+  }
+  function areaChestCount(a){ // chests inside the polygon (groups count their size)
+    var n=0;
+    for(var id in entries){var m=entries[id];
+      if(!live(m)||m.x==null)continue;
+      if(m.kind!=="chest"&&m.kind!=="group")continue;
+      if(!pointInPoly(m.x,m.y,a.points))continue;
+      n+=m.kind==="group"?(m.count||0):1;
+    }
+    return n;
+  }
+  function areaTotalFor(a){ // the game HUD's true chest count, observed by the runner
+    var v=areaTotals&&areaTotals.areas&&areaTotals.areas[ignSlug(a.name)];
+    return v?v.total:null;
+  }
+  /* coverage heatmap: how well an area's chest-to-chest TRAVEL TIME is known. Mirrors the runner's
+     leg_coverage — each chest's ~6 nearest neighbours are the routing-relevant legs. A leg's quality
+     is graded by DIRECTED confidence + recency (the `legs` store): a leg measured once long ago is
+     "known" but shaky, so it colours cooler than one measured many times recently. With no `legs`
+     data (legacy) it degrades to the old binary measured/unmeasured fraction. */
+  var heatmap=false;
+  var LEG_CONF_N=4, LEG_HALFLIFE=14*86400;   // mirror the runner's confidence/recency constants
+  function _pairKey(a,b){return a<=b?a+"|"+b:b+"|"+a;}
+  function _legW(rec,now){                    // directed confidence*recency weight in [0,1]
+    if(!rec||!rec.t||!(rec.n>=1))return 0;
+    return Math.min(1,rec.n/LEG_CONF_N)*Math.pow(0.5,Math.max(0,now-(rec.at||0))/LEG_HALFLIFE);
+  }
+  function areaCoverage(a){
+    var cs=[];
+    for(var id in entries){var m=entries[id];
+      if(!live(m)||m.x==null||m.kind!=="chest"||m.gx==null||m.gz==null)continue;
+      if(!pointInPoly(m.x,m.y,a.points))continue;
+      var ck=coolKey(m); if(ck==null)continue;                 // needs full x/y/z to match a leg
+      cs.push([Math.round(m.gx),Math.round(m.gz),ck]);
+    }
+    if(cs.length<2)return {cov:1,known:0,total:0,unknown:0,chests:cs.length};
+    var pairs=(travelTimes&&travelTimes.pairs)||{},legs=(travelTimes&&travelTimes.legs)||{};
+    var now=Date.now()/1000,seen={},known=0,qsum=0,K=6;
+    for(var i=0;i<cs.length;i++){
+      var ord=[];
+      for(var j=0;j<cs.length;j++){if(j===i||cs[j][2]===cs[i][2])continue; // skip self + same block
+        var dx=cs[i][0]-cs[j][0],dz=cs[i][1]-cs[j][1];ord.push([dx*dx+dz*dz,j]);}
+      ord.sort(function(p,q){return p[0]-q[0];});
+      for(var n=0;n<Math.min(K,ord.length);n++){var ka=cs[i][2],kb=cs[ord[n][1]][2],pk=_pairKey(ka,kb);
+        if(seen[pk])continue;seen[pk]=1;
+        var qa=_legW(legs[ka+">"+kb],now),qb=_legW(legs[kb+">"+ka],now),q=Math.max(qa,qb);
+        if(q===0&&pairs[pk]!=null)q=1;         // legacy measured pair, no confidence data -> fully known
+        if(q>0||pairs[pk]!=null)known++;       // "known" stays binary (has SOME measurement)
+        qsum+=q;                               // quality is graded by confidence + recency
+      }
+    }
+    var total=Object.keys(seen).length;
+    return {cov:total?qsum/total:1,known:known,total:total,unknown:total-known,chests:cs.length};
+  }
+  function covColor(c){return "hsl("+Math.round(120*Math.max(0,Math.min(1,c)))+",68%,45%)";} // 0=red→120=green
+
+  /* ---------- route reliability / freshness grade ----------
+     "Can I trust this route today?" from two independent signals, plus a hard removed-chest check:
+       • FRESHNESS — has each chest been opened by ANYONE lately? A stop nobody has touched in weeks
+         may have been removed, moved, or is permanently gated; a recent open is live proof it's real.
+         (recency-decayed over a 21-day half-life, merged across every player's open log.)
+       • TIMING confidence — how well-measured the chest-to-chest legs are in THIS route's order
+         (reuses the same directed-leg confidence that powers the coverage heatmap).
+     Deleted / missing stops read as zero-fresh AND get an explicit "removed chests" warning. Only
+     individual chest pins are freshness-gradable (opens are logged per exact chest coordinate);
+     group / mob / teleport stops are skipped rather than falsely graded "never opened". */
+  var FRESH_HALFLIFE=21*86400;   // seconds; a chest unopened this long reads as ~half "proven"
+  function _allOpensNewest(){    // coolKey -> newest open epoch(ms) across all players
+    var m={};
+    for(var id in openLogs){var o=openLogs[id];if(!o||!o.opens)continue;
+      for(var k in o.opens){var t=o.opens[k]&&o.opens[k].t;if(t&&(m[k]==null||t>m[k]))m[k]=t;}}
+    return m;
+  }
+  function _newestOpenFor(m,newest){   // when was this marker last opened by anyone? (mirrors coolMsLeft matching)
+    var k=coolKey(m);
+    if(k!=null)return newest[k]!=null?newest[k]:null;
+    if(m.gx!=null&&m.gz!=null){       // marker saved without a Y -> match opens on x/z, newest wins
+      var rx=Math.round(m.gx),rz=Math.round(m.gz),best=null;
+      for(var ok in newest){var p=ok.split(",");
+        if(+p[0]===rx&&+p[2]===rz&&(best==null||newest[ok]>best))best=newest[ok];}
+      return best;
+    }
+    return null;
+  }
+  function routeGrade(r){
+    var nodes=(r&&r.nodes)||[],now=Date.now(),nowS=now/1000,newest=_allOpensNewest();
+    var legs=(travelTimes&&travelTimes.legs)||{},pairs=(travelTimes&&travelTimes.pairs)||{};
+    var chestNodes=0,missing=0,proven=0,neverOpened=0,recSum=0,cks=[];
+    nodes.forEach(function(nid){
+      var m=entries[nid];
+      if(!live(m)){missing++;cks.push(null);return;}       // referenced id gone / soft-deleted
+      if(m.kind!=="chest"){cks.push(null);return;}          // mobs/groups/teleports: opens are logged
+                                                            // per individual chest coordinate, so only
+                                                            // real chest pins are freshness-gradable
+      chestNodes++;
+      cks.push(coolKey(m));                                  // for leg matching (null if Y-less)
+      var t=_newestOpenFor(m,newest);
+      if(t==null){neverOpened++;return;}                    // nobody's ever logged opening it
+      recSum+=Math.pow(0.5,Math.max(0,(now-t)/1000)/FRESH_HALFLIFE);proven++;
+    });
+    // removed stops read as zero-fresh: losing chests must DRAG the grade, not dodge it
+    var freshDen=chestNodes+missing;
+    var recScore=freshDen?recSum/freshDen:1;                // never-opened stops contribute 0
+    var legN=0,legSum=0;
+    for(var i=0;i<cks.length-1;i++){var a=cks[i],b=cks[i+1];if(a==null||b==null||a===b)continue;
+      var q=Math.max(_legW(legs[a+">"+b],nowS),_legW(legs[b+">"+a],nowS));
+      if(q===0&&pairs[_pairKey(a,b)]!=null)q=0.6;           // legacy measured leg, confidence unknown
+      legSum+=q;legN++;}
+    var legScore=legN?legSum/legN:null;                     // null => no measurable legs yet
+    var overall=legScore==null?recScore:0.65*recScore+0.35*legScore;
+    return {overall:overall,rec:recScore,leg:legScore,chestNodes:chestNodes,missing:missing,
+            neverOpened:neverOpened,proven:proven,legN:legN};
+  }
+  function gradeLetter(x){return x>=0.85?"A":x>=0.7?"B":x>=0.5?"C":x>=0.3?"D":"F";}
+  function gradeColor(x){return "hsl("+Math.round(120*Math.max(0,Math.min(1,x)))+",65%,42%)";}
+  function gradeTip(gr){
+    var p=["Reliability "+gradeLetter(gr.overall)+" · "+Math.round(gr.overall*100)+"%"];
+    if(gr.chestNodes)p.push("Freshness: "+gr.proven+"/"+gr.chestNodes+" stop"+(gr.chestNodes>1?"s":"")+" opened recently"+
+             (gr.neverOpened?" · "+gr.neverOpened+" never logged":""));
+    if(gr.legN)p.push("Leg timing: "+Math.round((gr.leg||0)*100)+"% confidence over "+gr.legN+" leg"+(gr.legN>1?"s":""));
+    if(gr.missing)p.push("⚠ "+gr.missing+" stop"+(gr.missing>1?"s":"")+" removed from the map");
+    return p.join("\n");
+  }
+
+  function drawAreas(){
+    var svg=el("areasvg"),frag="",_cov={};
+    for(var id in areasLog){var a=areasLog[id];
+      var pts=a.points.map(function(p){return (p[0]*100)+","+(p[1]*100);}).join(" ");
+      var fill=a.color,fop=0.09;
+      if(heatmap){var cv=_cov[a.id]=areaCoverage(a); fill=covColor(cv.cov); fop=cv.total?0.30:0.04;}
+      frag+='<polygon points="'+pts+'" fill="'+fill+'" fill-opacity="'+fop+'" stroke="'+a.color+
+        '" stroke-opacity="0.65" stroke-width="1.5" stroke-dasharray="6 4" vector-effect="non-scaling-stroke"/>';
+    }
+    if(areaDraw&&areaDraw.points.length){
+      var dpts=areaDraw.points.map(function(p){return (p[0]*100)+","+(p[1]*100);}).join(" ");
+      if(areaDraw.points.length>=3){ // show the shape as it will save (closed)
+        frag+='<polygon points="'+dpts+'" fill="var(--accent)" fill-opacity="0.07" stroke="var(--accent)" stroke-width="2" stroke-dasharray="4 3" vector-effect="non-scaling-stroke"/>';
+      }else{
+        frag+='<polyline points="'+dpts+'" fill="none" stroke="var(--accent)" stroke-width="2" stroke-dasharray="4 3" vector-effect="non-scaling-stroke"/>';
+      }
+    }
+    svg.innerHTML=frag;
+    // draggable corner handles while drawing/editing (divs — the svg is pointer-events:none)
+    Array.prototype.slice.call(world.querySelectorAll(".areapt")).forEach(function(n){n.remove();});
+    if(areaDraw){
+      areaDraw.points.forEach(function(p,ix){
+        var h=document.createElement("div");
+        h.className="areapt"+(ix===0?" first":"");
+        h.dataset.idx=ix;
+        h.style.left=(p[0]*100)+"%";h.style.top=(p[1]*100)+"%";
+        h.title="Drag to move · right-click to remove · click to close the shape";
+        world.appendChild(h);
+      });
+    }
+    Array.prototype.slice.call(world.querySelectorAll(".arealabel")).forEach(function(n){n.remove();});
+    for(var id2 in areasLog){(function(a){
+      var cx=0,cy=0;
+      a.points.forEach(function(p){cx+=p[0];cy+=p[1];});
+      cx/=a.points.length;cy/=a.points.length;
+      var mapped=areaChestCount(a),total=areaTotalFor(a);
+      var sub=total!=null
+        ?(mapped+"/"+total+(total>mapped?" · ❓"+(total-mapped)+" undiscovered":" · fully mapped ✓"))
+        :(mapped+" mapped");
+      if(heatmap){var cv=_cov[a.id]||areaCoverage(a);
+        sub=cv.total?(Math.round(cv.cov*100)+"% leg-time confidence"+(cv.unknown?" · "+cv.unknown+" to learn":" ✓")):"too few chests to gauge";}
+      var d=document.createElement("div");
+      d.className="arealabel";
+      d.innerHTML=esc(a.name)+'<span class="au">'+sub+"</span>";
+      d.style.left=(cx*100)+"%";d.style.top=(cy*100)+"%";
+      d.style.color=a.color;
+      d.title=canEdit()?"Click to delete this area boundary (markers are untouched)":a.name;
+      d.dataset.areaId=a.id;
+      world.appendChild(d);
+    })(areasLog[id2]);}
+    renderAreasPanel();
+  }
+  function renderAreasPanel(){
+    var box=el("areasPanel"),ids=Object.keys(areasLog);
+    // zones whose chest total is known but whose boundary isn't drawn yet
+    var drawn={};ids.forEach(function(id){drawn[ignSlug(areasLog[id].name)]=1;});
+    var extras=Object.keys((areaTotals&&areaTotals.areas)||{}).filter(function(s){return !drawn[s];})
+      .map(function(s){var v=areaTotals.areas[s];
+        return '<div style="margin:7px 0"><div style="display:flex;justify-content:space-between;gap:8px">'+
+          '<span style="color:var(--text2)">'+esc(v.name||s)+"</span>"+
+          '<span class="mono" style="color:var(--text3)">?/'+v.total+"</span></div>"+
+          '<div style="font-size:11px;color:var(--text3)">'+(canEdit()?"draw its boundary to track progress":"boundary not drawn yet")+"</div></div>";
+      }).join("");
+    if(!ids.length){
+      box.innerHTML=(extras||'<div style="color:var(--text3)">No area bounds yet'+
+        (canEdit()?" — press ▱ Draw area, click the corners on the map, then Enter.":".")+"</div>");
+      return;
+    }
+    box.innerHTML=ids.map(function(id){
+      var a=areasLog[id],mapped=areaChestCount(a),total=areaTotalFor(a);
+      var pct=total?Math.min(100,Math.round(mapped/total*100)):0;
+      return '<div style="margin:7px 0">'+
+        '<div style="display:flex;justify-content:space-between;gap:8px">'+
+          '<span style="font-weight:650;color:'+a.color+'">'+esc(a.name)+"</span>"+
+          '<span class="mono" style="color:var(--text2)">'+mapped+(total!=null?"/"+total:"")+"</span></div>"+
+        (total!=null
+          ?'<div style="height:4px;border-radius:2px;background:var(--card2);margin-top:3px">'+
+             '<div style="height:4px;border-radius:2px;width:'+pct+'%;background:'+a.color+'"></div></div>'+
+           (total>mapped
+             ?'<div style="font-size:11px;color:var(--text3);margin-top:2px">❓ '+(total-mapped)+" undiscovered</div>"
+             :'<div style="font-size:11px;color:var(--good);margin-top:2px">✓ fully mapped</div>')
+          :"")+
+        "</div>";
+    }).join("")+extras;
+  }
+  function _distToSeg(f,a,b){
+    var dx=b[0]-a[0],dy=b[1]-a[1],len2=dx*dx+dy*dy;
+    var t=len2?Math.max(0,Math.min(1,((f.x-a[0])*dx+(f.y-a[1])*dy)/len2)):0;
+    var px=a[0]+t*dx,py=a[1]+t*dy;
+    return Math.hypot(f.x-px,f.y-py);
+  }
+  function areaPointPicked(f){
+    if(areaDraw.editingId&&areaDraw.points.length>=3){
+      // editing an existing shape: a map click INSERTS the corner into the nearest edge,
+      // so refining one side doesn't append across the whole polygon
+      var best=0,bd=1e9,n=areaDraw.points.length;
+      for(var i=0;i<n;i++){
+        var d=_distToSeg(f,areaDraw.points[i],areaDraw.points[(i+1)%n]);
+        if(d<bd){bd=d;best=i+1;}
+      }
+      areaDraw.points.splice(best,0,[f.x,f.y]);
+    }else{
+      areaDraw.points.push([f.x,f.y]);
+    }
+    drawAreas();
+    toast(areaDraw.points.length<3?("Corner "+areaDraw.points.length+" — keep clicking")
+      :"Drag corners to move · right-click removes · click a corner (or Enter) to close");
+  }
+  function areaDrawStop(msg){areaDraw=null;viewport.classList.remove("areadrawing");drawAreas();if(msg)toast(msg);}
+  function areaDrawFinish(){
+    if(!areaDraw||areaDraw.points.length<3){areaDrawStop("Need at least 3 corners — cancelled");return;}
+    var name=areaDraw.name;
+    if(!name){ // fresh drawing — ask; edits keep their name (rename lives in the label menu)
+      name=prompt("Area name — exactly as the game HUD shows it (e.g. Thornvale):");
+      if(!name||!name.trim()){areaDrawStop("Cancelled");return;}
+      name=name.trim();
+    }
+    var a={id:"area-x",type:"area",name:name,
+      color:areaDraw.color||AREA_COLORS[Object.keys(areasLog).length%AREA_COLORS.length],
+      points:areaDraw.points};
+    persist(a,false).then(function(){areaDrawStop("Area saved");refresh(true);})
+      .catch(function(e){areaDrawStop("⚠ Couldn't save: "+(e&&e.message||"error"));});
+  }
+  function areaEditStart(a){ // reopen a saved boundary for corner editing
+    areaDraw={points:a.points.map(function(p){return [p[0],p[1]];}),
+              editingId:a.id,name:a.name,color:a.color};
+    viewport.classList.add("areadrawing");
+    drawAreas();
+    toast("Editing “"+a.name+"” — drag corners, right-click removes, click on the map to add · Enter saves, Esc cancels");
+  }
+  el("coverageBtn").addEventListener("click",function(){
+    heatmap=!heatmap;
+    el("coverageBtn").style.color=heatmap?"var(--accent)":"";
+    if(heatmap&&!Object.keys(areasLog).length)toast("Draw area boundaries first — the heatmap colours them by measured travel-time coverage");
+    drawAreas();
+  });
+  el("drawAreaBtn").addEventListener("click",function(){
+    if(areaDraw){areaDrawStop("Area drawing cancelled");return;}
+    if(!canEdit()){toast("Editor access required to draw areas — sign in as an editor");return;}
+    if(shared!==true){toast("Areas live on the shared map — reconnect first");return;}
+    areaDraw={points:[]};viewport.classList.add("areadrawing");
+    toast("Click the area's corners on the map — click a corner (or Enter) to close, Esc cancels");
+  });
+  var areaMenuEl=null;
+  function closeAreaMenu(){if(areaMenuEl){areaMenuEl.remove();areaMenuEl=null;}}
+  function openAreaMenu(a,cx,cy){
+    closeAreaMenu();
+    var m=document.createElement("div");
+    m.className="areamenu";
+    m.innerHTML='<button data-act="edit">✏ Edit boundary</button>'+
+      '<button data-act="rename">🏷 Rename…</button>'+
+      '<button data-act="total">📊 Set chest total…</button>'+
+      '<button data-act="del" style="color:var(--bad)">🗑 Delete boundary</button>'+
+      '<button data-act="close" style="color:var(--text3)">✕ Cancel</button>';
+    m.style.left=Math.min(cx,window.innerWidth-170)+"px";
+    m.style.top=Math.min(cy,window.innerHeight-160)+"px";
+    m.addEventListener("click",function(e){
+      var act=e.target.dataset&&e.target.dataset.act;
+      if(!act)return;
+      closeAreaMenu();
+      if(act==="edit"){
+        if(shared!==true){toast("Areas live on the shared map — reconnect first");return;}
+        areaEditStart(a);
+      }else if(act==="rename"){
+        var nn=prompt("New name for “"+a.name+"” (as the game HUD shows it):",a.name);
+        if(!nn||!nn.trim()||nn.trim()===a.name)return;
+        // ids derive from the name, so a rename is create-new + delete-old
+        persist({id:"area-x",type:"area",name:nn.trim(),color:a.color,points:a.points},false)
+          .then(function(){return persist(a,true);})
+          .then(function(){toast("Renamed");refresh(true);})
+          .catch(function(){toast("⚠ Couldn't rename");});
+      }else if(act==="total"){
+        var curT=areaTotalFor(a);
+        var nt=prompt("True chest total for “"+a.name+"” (the number after the / in the game HUD):",
+          curT!=null?curT:"");
+        if(nt==null)return;
+        nt=parseInt(nt,10);
+        if(!(nt>=1&&nt<=9999)){toast("Enter a number between 1 and 9999");return;}
+        var areas=Object.assign({},(areaTotals&&areaTotals.areas)||{});
+        areas[ignSlug(a.name)]={name:a.name,total:nt};
+        areaTotals={id:"areatotals",type:"areatotals",areas:areas};
+        persist(areaTotals,false).then(function(){toast("Chest total saved");render();})
+          .catch(function(){toast("⚠ Couldn't save the total");});
+      }else if(act==="del"){
+        if(!confirm("Delete the “"+a.name+"” boundary? Markers are untouched."))return;
+        persist(a,true).then(function(){delete areasLog[a.id];drawAreas();toast("Area boundary removed");})
+          .catch(function(){toast("⚠ Couldn't remove");});
+      }
+    });
+    document.body.appendChild(m);
+    areaMenuEl=m;
+    setTimeout(function(){ // outside click / Esc dismisses
+      var away=function(ev){if(areaMenuEl&&!areaMenuEl.contains(ev.target)){closeAreaMenu();document.removeEventListener("pointerdown",away,true);}};
+      document.addEventListener("pointerdown",away,true);
+    },0);
+  }
+  document.addEventListener("keydown",function(e){
+    if(e.key==="Escape"&&areaMenuEl){closeAreaMenu();return;}
+    if(!areaDraw)return;
+    if(/^(INPUT|TEXTAREA|SELECT)$/.test(e.target&&e.target.tagName))return; // typing elsewhere
+    if(e.key==="Enter"){e.preventDefault();areaDrawFinish();}
+    else if(e.key==="Escape")areaDrawStop("Area drawing cancelled");
+  });
+
+  /* ---------- verify pending chest requests (editors only) ---------- */
+  function verifyPending(id){
+    var p=pendings[id];if(!p)return;
+    if(!canEdit()){
+      toast((p.kind==="zone"?"Zone review":p.kind==="remove"?"Reported missing":"Pending chest")+
+        (p.by?" from "+p.by:"")+" — an editor can verify it"+
+        (p.gx!=null?" ("+[p.gx,p.gy,p.gz].join("/")+")":""));
+      return;
+    }
+    openVerify(id);
+  }
+  function renderVerify(){
+    var ids=Object.keys(pendings);
+    var rows=ids.map(function(id){
+      var p=pendings[id];
+      var rm=p.kind==="remove",zn=p.kind==="zone";
+      var coords=(p.gx!=null||p.gy!=null||p.gz!=null)?[p.gx,p.gy,p.gz].map(function(v){return v==null?"?":v;}).join(" / "):"—";
+      var when=p.at?timeAgo(p.at):"";
+      var kindCell=zn?'<span style="color:var(--warn);font-weight:600">⚠ zone</span>'
+        :rm?'<span style="color:var(--bad);font-weight:600">✗ remove</span>'
+        :'<span style="color:var(--chest);font-weight:600">? new</span>';
+      var actions=zn
+        ?'<button class="act" data-vact="locate" title="Center the map on it — then adjust the area boundary (click its label → Edit boundary)">◎ Show</button> '+
+         '<button class="act primary" data-vact="reject" title="Boundary fixed (or the flag is wrong) — clear this review">✓ Resolved</button>'
+        :'<button class="act" data-vact="locate" title="Center the map on it">◎ Show</button> '+
+         '<button class="act primary" data-vact="approve" title="'+(rm?'Confirm it is gone — delete the chest (recoverable from the bin for 7 days)':'Add a real chest here')+'">'+(rm?'✓ It’s gone':'✓ Approve')+'</button> '+
+         '<button class="act danger" data-vact="reject" title="'+(rm?'The chest exists — dismiss this report':'Discard this request')+'">'+(rm?'✕ It exists':'✕ Reject')+'</button>';
+      return '<tr data-pid="'+esc(id)+'">'+
+        '<td>'+kindCell+'</td>'+
+        '<td>'+esc(p.by||"anon")+'</td>'+
+        '<td class="mono">'+esc(coords)+'</td>'+
+        '<td>'+esc(p.note||"")+'</td>'+
+        '<td style="color:var(--text3)">'+esc(when)+'</td>'+
+        '<td style="white-space:nowrap;text-align:right">'+actions+'</td></tr>';
+    }).join("");
+    el("verTable").innerHTML=
+      '<thead><tr><th></th><th>By</th><th>Coords (X/Y/Z)</th><th>Note</th><th>When</th><th></th></tr></thead>'+
+      '<tbody>'+(rows||'<tr><td colspan="6" style="color:var(--text3);padding:14px">No pending requests right now.</td></tr>')+'</tbody>';
+  }
+  function openVerify(focusId){
+    if(!canEdit())return;
+    renderVerify();el("verHint").textContent="";el("verOverlay").classList.add("open");
+    if(focusId&&pendings[focusId]){
+      var tr=el("verTable").querySelector('tr[data-pid="'+CSS.escape(focusId)+'"]');
+      if(tr){tr.classList.add("sel");tr.scrollIntoView({block:"nearest"});}
+    }
+  }
+  el("verClose").addEventListener("click",function(){el("verOverlay").classList.remove("open");});
+  el("verOverlay").addEventListener("mousedown",function(e){if(e.target===el("verOverlay"))el("verOverlay").classList.remove("open");});
+  el("verifyBtn").addEventListener("click",function(){openVerify(null);});
+  el("verTable").addEventListener("click",function(e){
+    var b=e.target.closest("[data-vact]");if(!b)return;
+    var tr=e.target.closest("tr[data-pid]");if(!tr)return;
+    var id=tr.dataset.pid,p=pendings[id];if(!p)return;
+    var act=b.dataset.vact;
+    if(act==="locate"){centerOnFrac(p.x,p.y);toast("Centered on the request");return;}
+    if(act==="approve")approvePending(id);
+    else if(act==="reject")rejectPending(id);
+  });
+  function markerAtCoords(gx,gz){
+    var rx=Math.round(gx),rz=Math.round(gz);
+    for(var id in entries){var m=entries[id];
+      if(m&&m.kind==="chest"&&!m.deleted&&m.gx!=null&&m.gz!=null&&
+         Math.round(m.gx)===rx&&Math.round(m.gz)===rz)return m;}
+    return null;
+  }
+  function approvePending(id){
+    var p=pendings[id];if(!p||!canEdit())return;
+    if(p.kind==="remove"){ // "it's gone": soft-delete the reported chest, then drop the report
+      var victim=markerAtCoords(p.gx,p.gz);
+      if(!confirm("Confirm this chest is gone"+(victim?" and delete it from the map":"")+"? (Recoverable from the 🗑 Bin for 7 days.)"))return;
+      el("verHint").textContent="Removing…";
+      var step=victim?persist(Object.assign({},victim,{deleted:Date.now()}),false):Promise.resolve();
+      step.then(function(){if(victim)entries[victim.id]=Object.assign({},victim,{deleted:Date.now()});return persist(p,true);})
+        .then(function(){return creditContrib(p.by,0,1);})  // the reporter spotted it
+        .then(function(){delete pendings[id];syncEditorUI();renderVerify();render();toast(victim?"Chest removed — restorable from the bin":"Report cleared (chest was already gone)");})
+        .catch(function(e){el("verHint").textContent="Couldn't remove: "+(e&&e.message||"error");});
+      return;
+    }
+    el("verHint").textContent="Approving…";
+    var chest={id:uid(),type:"marker",kind:"chest",x:p.x,y:p.y,
+      gx:(p.gx==null?null:p.gx),gy:(p.gy==null?null:p.gy),gz:(p.gz==null?null:p.gz),name:"",note:"",
+      foundBy:p.by||""};
+    persist(chest,false)
+      .then(function(){return persist(p,true);})      // drop the request once the chest exists
+      .then(function(){return creditContrib(p.by,1,0);})  // the submitter located it
+      .then(function(){delete pendings[id];syncEditorUI();renderVerify();render();toast("Approved — chest added");})
+      .catch(function(e){el("verHint").textContent="Couldn't approve: "+(e&&e.message||"error");});
+  }
+  function rejectPending(id){
+    var p=pendings[id];if(!p||!canEdit())return;
+    var rm=p.kind==="remove",zn=p.kind==="zone";
+    if(!confirm(zn?("Resolve this zone review"+(p.by?" from "+p.by:"")+"? (If the boundary was wrong, adjust it first — label → Edit boundary.)")
+                :rm?("Dismiss this missing-chest report"+(p.by?" from "+p.by:"")+"? The chest stays on the map.")
+                  :("Reject this pending chest request"+(p.by?" from "+p.by:"")+"? It will be discarded.")))return;
+    el("verHint").textContent=zn?"Resolving…":"Rejecting…";
+    persist(p,true)
+      .then(function(){delete pendings[id];syncEditorUI();renderVerify();render();toast(zn?"Zone review resolved":rm?"Report dismissed — chest stays":"Request rejected");})
+      .catch(function(e){el("verHint").textContent="Couldn't reject: "+(e&&e.message||"error");});
+  }
+
+  function addToActiveRoute(markerId){
+    var mk0=entries[markerId];
+    if(mk0&&mk0.kind!=="chest"&&mk0.kind!=="group"){toast("Routes are built from chests — teleports and mobs can't be route stops");return;}
+    if(!activeRoute){ // start a fresh draft on first click
+      var r={id:uid(),type:"route",name:"New route",nodes:[],totalTime:null,legTimes:[],author:"",note:""};
+      draftRoutes[r.id]=r;saveDrafts();activeRoute=r.id;
+    }
+    var r2=routeById(activeRoute);if(!r2)return;
+    var last=r2.nodes[r2.nodes.length-1];
+    if(last===markerId)return; // ignore double-add of same stop
+    r2.nodes.push(markerId); r2.legTimes=r2.legTimes||[];
+    if(r2.nodes.length>1)r2.legTimes[r2.nodes.length-2]=r2.legTimes[r2.nodes.length-2]||null;
+    persistDraftEdit(r2); render();
+  }
+
+  /* ---------- marker editor ---------- */
+  function newMarkerAt(kind,x,y){
+    if(!canEdit()){toast(signedIn()?"Editor access required to add markers":"Sign in to contribute (top-right)");return;}
+    var m={id:uid(),type:"marker",kind:kind,x:x,y:y,gx:null,gy:null,gz:null,name:"",note:""};
+    if(kind==="group")m.count=3;
+    else if(kind==="mob"){m.xp=0;m.spawnAmount=1;m.category="normal";}
+    entries[m.id]=m; render();
+    openMarkerEditor(m.id,true);
+  }
+  function showKindFields(k){
+    Array.prototype.slice.call(document.querySelectorAll("[data-for]")).forEach(function(n){
+      n.style.display=(n.getAttribute("data-for")===k)?"":"none";
+    });
+  }
+  function setKind(k){editKind=k;Array.prototype.slice.call(el("kindSeg").children).forEach(function(b){b.classList.toggle("on",b.dataset.kind===k);});showKindFields(k);el("mTitle").textContent=k==="chest"?"Chest":k==="group"?"Chest group":k==="mob"?"Mob spawn":"Teleport";}
+  el("kindSeg").addEventListener("click",function(e){var b=e.target.closest("[data-kind]");if(b)setKind(b.dataset.kind);});
+  el("mCount").addEventListener("input",function(){var n=parseInt(this.value,10);el("groupHint").textContent=isFinite(n)?("shows "+(n>=8?"purple (large)":n>=4?"orange (medium)":"red (small)")):"";});
+
+  var newMarker=false;
+  function openMarkerEditor(id,isNew){
+    var m=entries[id];if(!m)return; editingMarker=id; newMarker=!!isNew;
+    setKind(m.kind);
+    el("mName").value=m.name||"";
+    el("mCount").value=m.count||3; el("mCount").dispatchEvent(new Event("input"));
+    var mcs=mobCats(),curCat=m.category||"normal";
+    el("mMobCat").innerHTML=mcs.order.map(function(k){
+      return '<option value="'+esc(k)+'"'+((curCat===k)?" selected":"")+'>'+esc(mcs.map[k].name)+'</option>';
+    }).join("")+
+      // deleted category: keep the mob's slug selectable so Save doesn't silently reassign it
+      (mcs.map[curCat]?"":'<option value="'+esc(curCat)+'" selected>'+esc(curCat)+' (deleted)</option>');
+    el("mXp").value=m.xp||0; el("mSpawn").value=m.spawnAmount||0;
+    el("mDiff").value=String(m.diff!=null?m.diff:1);
+    el("mGx").value=m.gx==null?"":m.gx; el("mGy").value=m.gy==null?"":m.gy; el("mGz").value=m.gz==null?"":m.gz;
+    el("mFromCoords").hidden=!calibration;
+    el("mNote").value=m.note||"";
+    el("mDelete").hidden=false;
+    el("mErr").textContent="";
+    var ro=!canEdit();                                   // non-editors get a read-only view
+    el("mOverlay").classList.toggle("ro",ro);
+    el("mCancel").textContent=ro?"Close":"Cancel";
+    el("mTitle").textContent=(el("mTitle").textContent||"")+(ro?" (view only)":"");
+    // select the marker visually
+    highlight(id);
+    el("mOverlay").classList.add("open"); if(!ro)el("mName").focus();
+  }
+  function highlight(id){highlightId=id;Array.prototype.slice.call(world.querySelectorAll(".marker")).forEach(function(n){n.classList.toggle("sel",n.dataset.id===id);});}
+  function closeMarkerEditor(discardNew){
+    if(saving)return; // never discard/close while a save or delete is in flight
+    if(discardNew&&newMarker&&editingMarker&&entries[editingMarker]){delete entries[editingMarker];render();}
+    el("mOverlay").classList.remove("open"); editingMarker=null;newMarker=false; highlight(null);
+  }
+  el("mCancel").addEventListener("click",function(){closeMarkerEditor(true);});
+  el("mOverlay").addEventListener("mousedown",function(e){if(e.target===el("mOverlay"))closeMarkerEditor(true);});
+  el("mSave").addEventListener("click",function(){
+    if(saving)return;var m=entries[editingMarker];if(!m)return;
+    m.kind=editKind; m.name=el("mName").value.trim();
+    m.gx=numOrNull(el("mGx").value); m.gy=numOrNull(el("mGy").value); m.gz=numOrNull(el("mGz").value);
+    m.note=el("mNote").value.trim();
+    if(editKind==="chest"){var dv=parseFloat(el("mDiff").value);m.diff=[0.75,1,1.5,2,5].indexOf(dv)>=0?dv:1;delete m.rarity;delete m.count;delete m.xp;delete m.spawnAmount;delete m.difficulty;delete m.category;}
+    else if(editKind==="group"){var c=parseInt(el("mCount").value,10);if(!isFinite(c)||c<1){el("mErr").textContent="Group needs at least 1 chest.";return;}m.count=Math.min(999,c);delete m.rarity;delete m.xp;delete m.spawnAmount;delete m.difficulty;delete m.category;delete m.diff;}
+    else if(editKind==="mob"){m.xp=Math.max(0,parseFloat(el("mXp").value)||0);m.spawnAmount=Math.max(0,parseInt(el("mSpawn").value,10)||0);m.category=el("mMobCat").value||"normal";delete m.difficulty;delete m.rarity;delete m.count;delete m.diff;}
+    else{delete m.diff;delete m.count;delete m.rarity;delete m.xp;delete m.spawnAmount;delete m.category;delete m.difficulty;}  // teleport: just name + coords
+    saving=true;el("mSave").disabled=true;
+    persist(m,false).then(function(){toast("Saved"+(shared?" for everyone":""));el("mOverlay").classList.remove("open");editingMarker=null;newMarker=false;highlight(null);})
+      .catch(function(e){var msg="Couldn't save: "+(e&&e.message||"error");if(el("mOverlay").classList.contains("open"))el("mErr").textContent=msg;else toast(msg);})
+      .finally(function(){saving=false;el("mSave").disabled=false;});
+  });
+  el("mDelete").addEventListener("click",function(){
+    if(!editingMarker||saving)return;var m=entries[editingMarker];if(!m)return;
+    if(!confirm("Remove this "+m.kind+(m.name?' ("'+m.name+'")':"")+(shared?" for everyone":"")+"?\n\nIt goes to the recycle bin and can be restored for 7 days."))return;
+    saving=true;
+    // soft delete: keep the record with a timestamp so it can be restored;
+    // routes keep their node so the stop returns intact if it's brought back
+    m.deleted=Date.now();
+    persist(m,false).then(function(){
+      toast("Removed — restorable from 🗑 Bin for 7 days");
+      el("mOverlay").classList.remove("open");editingMarker=null;newMarker=false;highlight(null);render();
+    }).catch(function(e){delete m.deleted;el("mErr").textContent="Couldn't remove: "+(e&&e.message||"error");})
+    .finally(function(){saving=false;});
+  });
+  function numOrNull(v){v=String(v).trim();if(!v)return null;var n=parseFloat(v);return isFinite(n)?n:null;}
+
+  /* ---------- hover tooltip ---------- */
+  var tip=el("tip");
+  viewport.addEventListener("pointermove",function(e){
+    if(drag){tip.style.display="none";return;}
+    var mk=e.target.closest(".marker");
+    if(!mk){tip.style.display="none";return;}
+    var m=entries[mk.dataset.id];
+    if(!m&&mk.dataset.cluster){
+      var cn=mk.dataset.cluster.split(",").length;
+      tip.innerHTML="<b>"+cn+" chests</b><br><span class='co'>click to "+(mk.classList.contains("open")?"collapse":"expand")+"</span>";
+      tip.style.display="block";
+      tip.style.left=Math.min(e.clientX+14,window.innerWidth-tip.offsetWidth-8)+"px";
+      tip.style.top=Math.min(e.clientY+14,window.innerHeight-tip.offsetHeight-8)+"px";
+      return;
+    }
+    if(!m){tip.style.display="none";return;}
+    var h="<b>"+esc(m.name||(m.kind==="chest"?"Chest":m.kind==="group"?("Group · "+m.count+" chests"):m.kind==="teleport"?"Teleport":"Mob spawn"))+"</b>";
+    if(m.kind==="group")h+="<br>"+m.count+" chests ("+({"g-small":"small","g-med":"medium","g-large":"large"}[groupClass(m.count)])+")";
+    if(m.kind==="mob"){
+      var mcat=catInfo(m.category||"normal");
+      h+="<br>"+m.xp+" XP · "+m.spawnAmount+" spawns · "+esc(mcat.name)+(m.difficulty?" · "+esc(m.difficulty):"");
+      var coins=mcat.mobcoin*(m.spawnAmount==null?1:m.spawnAmount);
+      if(coins>0)h+="<br><span class='co'>~"+fmtAmt(coins)+" mobcoins</span>";
+    }
+    if(m.gx!=null||m.gy!=null||m.gz!=null)h+='<br><span class="co mono">'+[m.gx,m.gy,m.gz].map(function(v){return v==null?"?":v;}).join(" / ")+"</span>";
+    if(m.kind==="chest"&&player){
+      var msLeft=coolMsLeft(m,playerOpens());
+      if(msLeft>0)h+='<br><span class="co">⏳ '+esc(player)+" opened this — ready in "+fmtLeft(msLeft)+"</span>";
+    }
+    if(m.note)h+='<br><span class="co">'+esc(m.note)+"</span>";
+    tip.innerHTML=h;tip.style.display="block";
+    tip.style.left=Math.min(e.clientX+14,window.innerWidth-tip.offsetWidth-8)+"px";
+    tip.style.top=Math.min(e.clientY+14,window.innerHeight-tip.offsetHeight-8)+"px";
+  });
+  viewport.addEventListener("pointerleave",function(){tip.style.display="none";});
+
+  /* chest drop tables & loot editor removed — chests-opened is the metric. */
+  function syncRouteCoins(r){
+    var mb=routeMobcoins(r);
+    el("rCoins").textContent=mb.total>0
+      ?("Mobcoins on this route: ~"+fmtAmt(mb.total)+(mb.capped?" (capped by daily limits)":""))
+      :"";
+  }
+  /* ---------- mob category editor ---------- */
+  var editCats=[],mcDirty=false;
+  function loadCatEditor(){
+    var mc=mobCats();
+    editCats=mc.order.map(function(k){var c=mc.map[k];return{slug:k,name:c.name,mobcoin:c.mobcoin,dailyLimit:c.dailyLimit,builtin:c.builtin};});
+    mcDirty=false;renderCatEditor();
+  }
+  function renderCatEditor(){
+    var h='<thead><tr><th scope="col">Category</th><th scope="col" style="text-align:right">Mobcoins / kill</th><th scope="col" style="text-align:right">Daily limit</th><th></th></tr></thead><tbody>';
+    editCats.forEach(function(c,i){
+      h+='<tr><td><input type="text" maxlength="30" data-i="'+i+'" data-k="name" value="'+esc(c.name)+'"'+(c.builtin?' disabled title="Built-in category names are fixed"':'')+' aria-label="Category '+(i+1)+' name"></td>'+
+        '<td class="num"><input type="number" min="0" step="any" data-i="'+i+'" data-k="mobcoin" value="'+c.mobcoin+'" aria-label="Category '+(i+1)+' mobcoins per kill"></td>'+
+        '<td class="num"><input type="number" min="0" step="any" data-i="'+i+'" data-k="dailyLimit" value="'+(c.dailyLimit==null?"":c.dailyLimit)+'" placeholder="∞" aria-label="Category '+(i+1)+' daily mobcoin limit"></td>'+
+        '<td class="rm">'+(c.builtin?'':'<button type="button" data-mcrm="'+i+'" title="Delete category" aria-label="Delete category '+(i+1)+'">✕</button>')+'</td></tr>';
+    });
+    el("mobCatTable").innerHTML=h+'</tbody>';
+    if(!mcDirty)el("mcHint").textContent="";
+  }
+  el("mobCatTable").addEventListener("input",function(e){
+    var inp=e.target;if(!inp.dataset.k)return;
+    var c=editCats[+inp.dataset.i];if(!c)return;
+    if(inp.dataset.k==="name")c.name=inp.value.slice(0,30);
+    else if(inp.dataset.k==="dailyLimit"){
+      var s=inp.value.trim();
+      if(!s)c.dailyLimit=null;
+      else{var v=parseFloat(s);if(isFinite(v)&&v>=0)c.dailyLimit=v;}
+    }else{
+      var v2=parseFloat(inp.value);if(isFinite(v2)&&v2>=0)c.mobcoin=v2;
+    }
+    mcDirty=true;el("mcHint").textContent="Unsaved changes — Save categories shares them.";
+  });
+  el("mobCatTable").addEventListener("click",function(e){
+    var rm=e.target.closest("[data-mcrm]");if(!rm)return;
+    var i=+rm.dataset.mcrm,c=editCats[i];if(!c||c.builtin)return;
+    var used=0;for(var id in entries){var m=entries[id];if(m.kind==="mob"&&live(m)&&(m.category||"normal")===c.slug)used++;}
+    if(!confirm('Delete category "'+c.name+'"'+(shared?" for everyone":"")+'?'+(used?" "+used+" mob"+(used>1?"s":"")+" use it and will stop earning mobcoins until reassigned.":"")))return;
+    if(c.slug&&catOverrides[c.slug]){
+      persist({id:"mc-"+c.slug,type:"mobcat"},true).then(function(){toast("Category deleted");loadCatEditor();render();})
+        .catch(function(e2){el("mcHint").textContent="Couldn't delete: "+(e2&&e2.message||"error");});
+    }else{editCats.splice(i,1);renderCatEditor();}
+  });
+  el("mcAddRow").addEventListener("click",function(){
+    editCats.push({slug:null,name:"New category",mobcoin:0,dailyLimit:null,builtin:false});
+    mcDirty=true;renderCatEditor();
+    el("mcHint").textContent="Unsaved changes — Save categories shares them.";
+    var last=el("mobCatTable").querySelector('tbody tr:last-child input[data-k="name"]');
+    if(last){last.focus();last.select();}
+  });
+  el("mcSave").addEventListener("click",function(){
+    var mc=mobCats().map,toPost=[],seenSlugs={};
+    for(var i=0;i<editCats.length;i++){
+      var c=editCats[i],name=String(c.name||"").trim();
+      if(!name){el("mcHint").textContent="Row "+(i+1)+" needs a name.";return;}
+      // fail fast with a row number — the server rejects/zeroes out-of-range values
+      if((+c.mobcoin||0)>1e12){el("mcHint").textContent="Row "+(i+1)+": mobcoins per kill is too large.";return;}
+      if(c.dailyLimit!=null&&+c.dailyLimit>1e15){el("mcHint").textContent="Row "+(i+1)+": daily limit is too large.";return;}
+      var slug=c.slug;
+      if(!slug){
+        var base=name.toLowerCase().replace(/[^\w-]+/g,"-").replace(/^-+|-+$/g,"")||"cat";
+        slug=base;var n=2;
+        while(mc[slug]||seenSlugs[slug])slug=base+"-"+(n++);
+        c.slug=slug;
+      }
+      seenSlugs[slug]=true;
+      var cur=mc[slug];
+      var changed=!cur||cur.name!==name||cur.mobcoin!==(+c.mobcoin||0)||String(cur.dailyLimit)!==String(c.dailyLimit==null?null:+c.dailyLimit);
+      if(changed)toPost.push({id:"mc-"+slug,type:"mobcat",name:name,mobcoin:+c.mobcoin||0,dailyLimit:c.dailyLimit==null?null:+c.dailyLimit});
+    }
+    if(!toPost.length){mcDirty=false;el("mcHint").textContent="No changes to save.";return;}
+    el("mcSave").disabled=true;
+    var chain=Promise.resolve(),ok=0,firstErr=null;
+    toPost.forEach(function(p){chain=chain.then(function(){return persist(p,false).then(function(){ok++;},function(e2){if(!firstErr)firstErr=e2;});});});
+    chain.then(function(){
+      if(firstErr){
+        // keep the working copy + dirty flag so the failed rows survive for a retry
+        // (loadCatEditor would rebuild from saved state and wipe this hint)
+        el("mcHint").textContent="Saved "+ok+" of "+toPost.length+" — "+(firstErr.message||"error");
+        render();
+      }else{
+        mcDirty=false;toast("Categories saved"+(shared?" for everyone":" on this device"));
+        loadCatEditor();render();
+      }
+    }).finally(function(){el("mcSave").disabled=false;});
+  });
+
+  function closeStats(){
+    if(mcDirty&&!confirm("Discard unsaved mob-category changes?"))return;
+    mcDirty=false;el("sOverlay").classList.remove("open");
+  }
+  el("mobcatBtn").addEventListener("click",function(){
+    el("sOverlay").classList.add("open");loadCatEditor();
+  });
+  el("sClose").addEventListener("click",closeStats);
+  el("sOverlay").addEventListener("mousedown",function(e){if(e.target===el("sOverlay"))closeStats();});
+
+  /* ---------- recycle bin ---------- */
+  var BIN_MS=7*24*60*60*1000; // deleted chests are restorable for 7 days
+  function binItems(){ // soft-deleted markers still within the restore window, newest first
+    var out=[];
+    for(var id in entries){var m=entries[id];
+      if(m.deleted&&(Date.now()-m.deleted)<BIN_MS)out.push(m);}
+    return out.sort(function(a,b){return b.deleted-a.deleted;});
+  }
+  function purgeExpired(){ // opportunistically hard-delete a few long-expired items to keep the store tidy
+    if(shared!==true)return;
+    var gone=[];
+    for(var id in entries){var m=entries[id];
+      if(m.deleted&&(Date.now()-m.deleted)>=BIN_MS)gone.push(id);}
+    gone.slice(0,5).forEach(function(id){
+      var m=entries[id];delete entries[id];
+      persist({id:id,type:"marker",kind:"chest",x:m.x,y:m.y},true).catch(function(){entries[id]=m;});
+    });
+  }
+  function renderBin(){
+    var items=binItems();
+    if(!items.length){el("binTable").innerHTML='<tbody><tr><td style="padding:14px;color:var(--text3)">Nothing removed in the last 7 days.</td></tr></tbody>';return;}
+    var rows=items.map(function(m){
+      var age=Math.max(0,Math.round((Date.now()-m.deleted)/3600000));
+      var left=Math.max(0,Math.ceil((BIN_MS-(Date.now()-m.deleted))/86400000));
+      var loc=(m.gx!=null?[m.gx,m.gy,m.gz].join(" / "):"—");
+      return '<tr><td style="padding:6px 8px">'+esc(m.name||(m.kind==="chest"?"Chest":cap(m.kind)))+
+        '<div class="mono" style="color:var(--text3);font-size:11px">'+esc(loc)+'</div></td>'+
+        '<td style="padding:6px 8px;color:var(--text3);font-size:11.5px;white-space:nowrap">'+(age<1?"just now":age+"h ago")+' · '+left+'d left</td>'+
+        '<td style="padding:6px 8px;text-align:right"><button class="act" data-restore="'+esc(m.id)+'">Restore</button></td></tr>';
+    }).join("");
+    el("binTable").innerHTML="<tbody>"+rows+"</tbody>";
+  }
+  el("binTable").addEventListener("click",function(e){
+    var b=e.target.closest("[data-restore]");if(!b)return;
+    var m=entries[b.dataset.restore];if(!m)return;
+    b.disabled=true;
+    var stamp=m.deleted;delete m.deleted;
+    // A pin deleted BEFORE a map-image swap missed the ⤾ Re-align pass (it filters to live pins),
+    // so its stored position may still be the old image's. Restore onto the CURRENT alignment when
+    // its world coords say the pin is meaningfully off (>2%) — mobs excluded like re-align itself
+    // (re-POSTing a legacy mob would zero its spawnAmount).
+    var oldXY=null;
+    if(m.gx!=null&&m.gz!=null&&m.kind!=="mob"&&calibration){
+      var p=worldToMap(m.gx,m.gz);
+      if(p&&p.x>=-0.02&&p.x<=1.02&&p.y>=-0.02&&p.y<=1.02
+         &&(Math.abs(p.x-(m.x||0))>0.02||Math.abs(p.y-(m.y||0))>0.02)){
+        oldXY={x:m.x,y:m.y};
+        m.x=Math.max(0,Math.min(1,p.x));m.y=Math.max(0,Math.min(1,p.y));
+      }
+    }
+    persist(m,false).then(function(){toast(oldXY?"Restored — snapped to the current map alignment":"Restored");renderBin();render();})
+      .catch(function(err){m.deleted=stamp;if(oldXY){m.x=oldXY.x;m.y=oldXY.y;}b.disabled=false;el("binHint").textContent="Couldn't restore: "+(err&&err.message||"error");});
+  });
+  el("binBtn").addEventListener("click",function(){el("binHint").textContent="";purgeExpired();renderBin();el("binOverlay").classList.add("open");});
+  el("binClose").addEventListener("click",function(){el("binOverlay").classList.remove("open");});
+  el("binOverlay").addEventListener("mousedown",function(e){if(e.target===el("binOverlay"))el("binOverlay").classList.remove("open");});
+
+  /* ---------- run leaderboards ---------- */
+  function routeName(rid){var r=pubRoutes[rid]||draftRoutes[rid];return r?(r.name||"Untitled"):null;}
+  function renderLeaderboards(){
+    var lbP=(el("lbIgn").value||player||"").trim().toLowerCase();
+    var best=(runsLog&&runsLog.best)||{},stats=(runsLog&&runsLog.stats)||{},byRoute={};
+    for(var k in best){var sep=k.lastIndexOf("|");if(sep<0)continue;
+      var rid=k.slice(0,sep),rec=best[k];(byRoute[rid]=byRoute[rid]||[]).push(rec);}
+    var rids=Object.keys(byRoute).filter(function(r){return routeName(r);});
+    if(!rids.length){el("lbBody").innerHTML='<div class="empty" style="padding:16px;color:var(--text3)">No runs recorded yet. Run a published route in the companion app to set a time.</div>';return;}
+    // order routes by their current best time
+    rids.sort(function(a,b){return Math.min.apply(null,byRoute[a].map(function(x){return x.t;}))-Math.min.apply(null,byRoute[b].map(function(x){return x.t;}));});
+    el("lbBody").innerHTML=rids.map(function(rid){
+      var rows=byRoute[rid].slice().sort(function(a,b){return a.t-b.t;}).slice(0,10);
+      var bestT=rows.length?rows[0].t:null;           // co-holders all share this time
+      var coN=byRoute[rid].filter(function(x){return x.t===bestT;}).length;
+      var medals=["🥇","🥈","🥉"];
+      var body=rows.map(function(r,i){
+        var mine=String(r.ign||"").trim().toLowerCase()===lbP&&lbP;
+        var co=r.t===bestT;                            // ties for the lead all get gold
+        return '<tr'+(mine?' style="background:color-mix(in srgb,var(--accent) 16%,transparent)"':'')+'>'+
+          '<td style="padding:5px 8px;width:34px">'+(co?"🥇":(medals[i]||(i+1)))+'</td>'+
+          '<td style="padding:5px 8px;font-weight:'+(mine?"700":"500")+'">'+esc(r.ign)+'</td>'+
+          '<td class="mono" style="padding:5px 8px;text-align:right">'+fmtTime(r.t)+'</td>'+
+          '<td style="padding:5px 8px;text-align:right;color:var(--text3);font-size:11.5px">'+(r.c||0)+' chests</td></tr>';
+      }).join("");
+      // realistic time: the average across EVERY completion ever (kept in the backend even after the
+      // recent feed rolls over), so it reflects a normal run, not just the record.
+      var s=stats[rid],typical="";
+      if(s&&s.n>0){typical=' · typical '+fmtTime(Math.round(s.sum/s.n))+' over '+s.n+' run'+(s.n===1?"":"s");}
+      var coNote=coN>1?' · '+coN+' tied for 🥇':'';
+      return '<div style="margin:0 0 16px"><div class="sechead" style="padding:6px 0 4px">'+esc(routeName(rid))+
+        ' <span style="color:var(--text3);font-weight:400;text-transform:none">— '+byRoute[rid].length+' player'+(byRoute[rid].length===1?"":"s")+coNote+typical+'</span></div>'+
+        '<table class="rates" style="width:100%"><tbody>'+body+'</tbody></table></div>';
+    }).join("");
+  }
+  function routeBestLabel(rid){ // "🏁 best m:ss by IGN (+N tied)" for the route list, or ""
+    var best=(runsLog&&runsLog.best)||{},top=null,co=0;
+    for(var k in best){if(k.slice(0,k.lastIndexOf("|"))===rid){var r=best[k];if(!top||r.t<top.t)top=r;}}
+    if(!top)return "";
+    for(var k2 in best){if(k2.slice(0,k2.lastIndexOf("|"))===rid&&best[k2].t===top.t)co++;}
+    return "🏁 "+fmtTime(top.t)+" by "+esc(top.ign)+(co>1?" +"+(co-1)+" tied":"");
+  }
+  el("lbBtn").addEventListener("click",function(){el("lbIgn").value=el("lbIgn").value||player;renderLeaderboards();el("lbOverlay").classList.add("open");});
+  el("lbIgn").addEventListener("input",renderLeaderboards);
+  el("lbClose").addEventListener("click",function(){el("lbOverlay").classList.remove("open");});
+  el("lbOverlay").addEventListener("mousedown",function(e){if(e.target===el("lbOverlay"))el("lbOverlay").classList.remove("open");});
+  /* ---------- help ---------- */
+  el("helpBtn").addEventListener("click",function(){el("helpOverlay").classList.add("open");});
+  el("helpClose").addEventListener("click",function(){el("helpOverlay").classList.remove("open");});
+  el("helpOverlay").addEventListener("mousedown",function(e){if(e.target===el("helpOverlay"))el("helpOverlay").classList.remove("open");});
+  /* ---------- ⋯ More overflow menu ---------- */
+  el("moreBtn").addEventListener("click",function(e){e.stopPropagation();el("moreMenu").hidden=!el("moreMenu").hidden;});
+  el("moreMenu").addEventListener("click",function(e){ // picking any item closes the menu so its dialog opens clean
+    var b=e.target&&e.target.closest?e.target.closest("button"):null;
+    if(b)el("moreMenu").hidden=true;
+  });
+  document.addEventListener("mousedown",function(e){
+    var mm=el("moreMenu");
+    if(!mm.hidden&&!(e.target&&e.target.closest&&e.target.closest(".morewrap")))mm.hidden=true;
+  });
+  document.addEventListener("keydown",function(e){if(e.key==="Escape")el("moreMenu").hidden=true;});
+
+  /* ---------- personal stats ---------- */
+  function opensFor(ign){
+    var want=String(ign||"").trim().toLowerCase();
+    if(!want)return null;
+    for(var id in openLogs){var o=openLogs[id];
+      if(o&&o.ign&&String(o.ign).trim().toLowerCase()===want)return o.opens||{};}
+    return null;
+  }
+  function renderPStats(){
+    var ign=el("pstatsIgn").value.trim();
+    var opens=opensFor(ign);
+    if(!ign){el("pstatsBody").innerHTML='<div style="color:var(--text3);padding:14px">Enter an IGN to see stats.</div>';return;}
+    if(!opens||!Object.keys(opens).length){
+      el("pstatsBody").innerHTML='<div style="color:var(--text3);padding:14px">No chest opens recorded for “'+esc(ign)+'” yet — opens made with the companion app show up here.</div>';return;}
+    var times=Object.keys(opens).map(function(k){return opens[k].t;}).filter(Boolean).sort(function(a,b){return a-b;});
+    var r=resets(),today=times.filter(function(t){return t>=r.last;}).length;
+    // sessions: opens separated by >45 min gaps
+    var sessions=[],curS=null;
+    times.forEach(function(ti){
+      if(!curS||ti-curS.end>45*60*1000){curS={start:ti,end:ti,n:1};sessions.push(curS);}
+      else{curS.end=ti;curS.n++;}
+    });
+    var sessRows=sessions.slice(-8).reverse().map(function(s){
+      var durMin=Math.round((s.end-s.start)/60000);
+      var rate=durMin>=10?(s.n/((s.end-s.start)/3600000)).toFixed(0)+"/hr":"—";
+      var d=new Date(s.start);
+      return '<tr style="border-top:.5px solid var(--border)">'+
+        '<td style="padding:5px 8px">'+d.toLocaleDateString(undefined,{month:"short",day:"numeric"})+' '+
+          d.toLocaleTimeString(undefined,{hour:"numeric",minute:"2-digit"})+'</td>'+
+        '<td class="mono" style="padding:5px 8px;text-align:right">'+(durMin>=60?Math.floor(durMin/60)+"h "+(durMin%60)+"m":durMin+"m")+'</td>'+
+        '<td class="mono" style="padding:5px 8px;text-align:right">'+s.n+'</td>'+
+        '<td class="mono" style="padding:5px 8px;text-align:right">'+rate+'</td></tr>';
+    }).join("");
+    // personal bests from the runs leaderboard
+    var slug=ignSlug(ign),best=(runsLog&&runsLog.best)||{},bests=[];
+    for(var k in best){
+      var cut=k.lastIndexOf("|");
+      if(k.slice(cut+1)===slug)bests.push({rid:k.slice(0,cut),t:best[k].t,c:best[k].c||0});
+    }
+    bests.sort(function(a,b){return a.t-b.t;});
+    var bestRows=bests.map(function(b){
+      return '<tr style="border-top:.5px solid var(--border)">'+
+        '<td style="padding:5px 8px">'+esc(routeName(b.rid))+'</td>'+
+        '<td class="mono" style="padding:5px 8px;text-align:right">'+fmtTime(b.t)+'</td>'+
+        '<td style="padding:5px 8px;text-align:right;color:var(--text3);font-size:11.5px">'+b.c+' chests</td></tr>';
+    }).join("");
+    var cb=(contribLog&&contribLog.by&&contribLog.by[slug])||null;
+    function tile(label,val){return '<div style="flex:1;min-width:120px;background:var(--card2);border-radius:10px;padding:10px 14px">'+
+      '<div style="font-size:22px;font-weight:700" class="mono">'+val+'</div>'+
+      '<div style="font-size:11.5px;color:var(--text3)">'+label+'</div></div>';}
+    el("pstatsBody").innerHTML=
+      '<div style="display:flex;gap:10px;flex-wrap:wrap;margin:4px 0 16px">'+
+        tile("opened since the reset",today)+
+        tile("recent opens on record",times.length)+
+        tile("chests found (confirmed)",cb?(cb.found||0):0)+
+        tile("removals confirmed",cb?(cb.removed||0):0)+
+      '</div>'+
+      '<div class="sechead" style="padding:6px 0 4px">Sessions <span style="color:var(--text3);font-weight:400;text-transform:none">— opens grouped by 45-min breaks</span></div>'+
+      '<table class="rates" style="width:100%"><thead><tr>'+
+        '<th style="text-align:left;padding:4px 8px">Started</th><th style="text-align:right;padding:4px 8px">Length</th>'+
+        '<th style="text-align:right;padding:4px 8px">Opens</th><th style="text-align:right;padding:4px 8px">Rate</th></tr></thead>'+
+      '<tbody>'+sessRows+'</tbody></table>'+
+      '<div class="sechead" style="padding:14px 0 4px">Personal bests</div>'+
+      (bestRows?'<table class="rates" style="width:100%"><tbody>'+bestRows+'</tbody></table>'
+        :'<div style="color:var(--text3);font-size:12.5px;padding:4px 8px">No route runs finished yet.</div>')+
+      '<div style="color:var(--text3);font-size:11.5px;margin-top:12px">The shared log keeps your ~550 most recent opens, so “recent opens” is a rolling window, not all-time.</div>';
+  }
+  el("pstatsBtn").addEventListener("click",function(){el("pstatsIgn").value=el("pstatsIgn").value||player;renderPStats();el("pstatsOverlay").classList.add("open");});
+  el("pstatsIgn").addEventListener("input",renderPStats);
+  el("pstatsClose").addEventListener("click",function(){el("pstatsOverlay").classList.remove("open");});
+  el("pstatsOverlay").addEventListener("mousedown",function(e){if(e.target===el("pstatsOverlay"))el("pstatsOverlay").classList.remove("open");});
+
+  /* ---------- contributor leaderboard ---------- */
+  function creditContrib(ign,dFound,dRemoved){
+    // editor-side tally at confirmation time (rides the editor key). Best effort — a failed
+    // tally never blocks the approval it accompanies.
+    ign=String(ign||"").trim();
+    var slug=ignSlug(ign);
+    if(!ign||!slug)return Promise.resolve();
+    var by=Object.assign({},(contribLog&&contribLog.by)||{});
+    var cur=by[slug]||{};
+    by[slug]={ign:cur.ign||ign,found:(cur.found||0)+(dFound||0),removed:(cur.removed||0)+(dRemoved||0)};
+    contribLog={id:"contrib",type:"contrib",by:by};
+    return persist(contribLog,false).catch(function(){});
+  }
+  function renderContrib(){
+    var by=(contribLog&&contribLog.by)||{};
+    var rows=Object.keys(by).map(function(k){var v=by[k];
+      return {ign:v.ign||k,found:v.found||0,removed:v.removed||0,total:(v.found||0)+(v.removed||0)};
+    }).filter(function(r){return r.total>0;});
+    rows.sort(function(a,b){return b.total-a.total||b.found-a.found;});
+    var medals=["🥇","🥈","🥉"];
+    el("contribBody").innerHTML=rows.length?
+      '<table style="width:100%;border-collapse:collapse;font-size:13px">'+
+      '<thead><tr><th style="text-align:left;padding:6px 8px"></th><th style="text-align:left;padding:6px 8px">Player</th>'+
+      '<th style="text-align:right;padding:6px 8px">Chests found</th><th style="text-align:right;padding:6px 8px">Removals confirmed</th>'+
+      '<th style="text-align:right;padding:6px 8px">Total</th></tr></thead><tbody>'+
+      rows.map(function(r,i){
+        return '<tr style="border-top:.5px solid var(--border)"><td style="padding:6px 8px">'+(medals[i]||(i+1))+'</td>'+
+          '<td style="padding:6px 8px;font-weight:600">'+esc(r.ign)+'</td>'+
+          '<td style="padding:6px 8px;text-align:right" class="mono">'+r.found+'</td>'+
+          '<td style="padding:6px 8px;text-align:right" class="mono">'+r.removed+'</td>'+
+          '<td style="padding:6px 8px;text-align:right;font-weight:600" class="mono">'+r.total+'</td></tr>';
+      }).join("")+'</tbody></table>'
+      :'<div style="color:var(--text3);padding:14px">No confirmed contributions yet — chests logged with the app '+
+       'and verified pending requests will show up here.</div>';
+  }
+  el("contribBtn").addEventListener("click",function(){renderContrib();el("contribOverlay").classList.add("open");});
+  el("contribClose").addEventListener("click",function(){el("contribOverlay").classList.remove("open");});
+  el("contribOverlay").addEventListener("mousedown",function(e){if(e.target===el("contribOverlay"))el("contribOverlay").classList.remove("open");});
+
+  /* ---------- backup & restore ---------- */
+  function allEntriesSnapshot(){ // reconstruct the full shared store (entries hold markers only)
+    var out={};
+    for(var id in entries)out[id]=entries[id];
+    for(var rid in pubRoutes)out[rid]=pubRoutes[rid];
+    for(var cs in catOverrides){var c=catOverrides[cs];if(c&&c.id)out[c.id]=c;}
+    for(var oid in openLogs)out[oid]=openLogs[oid];
+    if(calibration)out.calibration=calibration;
+    if(runsLog)out.runs=runsLog;
+    if(contribLog)out.contrib=contribLog;
+    if(areaTotals)out.areatotals=areaTotals;
+    for(var aid in areasLog)out[aid]=areasLog[aid];
+    if(travelTimes)out.traveltimes=travelTimes;
+    return out;
+  }
+  el("backupBtn").addEventListener("click",function(){
+    var snap=allEntriesSnapshot();
+    el("exportInfo").textContent=Object.keys(snap).length+" entries in the map";
+    el("importInfo").textContent="";
+    el("backupOverlay").classList.add("open");
+  });
+  el("backupClose").addEventListener("click",function(){el("backupOverlay").classList.remove("open");});
+  el("backupOverlay").addEventListener("mousedown",function(e){if(e.target===el("backupOverlay"))el("backupOverlay").classList.remove("open");});
+  // --- prune orphaned travel data (editor maintenance) ---
+  el("sweepBtn").addEventListener("click",function(){
+    if(!canEdit()){toast("Editor access required");return;}
+    if(!travelTimes||(!travelTimes.pairs&&!travelTimes.legs)){el("sweepInfo").textContent="No learned travel data yet.";return;}
+    // an endpoint stays if a live chest/group still occupies its X,Z (y-agnostic — a marker's stored Y
+    // can drift a block from the coordinate a leg was measured at, and we must never drop valid data).
+    var liveXZ={};
+    for(var id in entries){var m=entries[id];
+      if(!live(m)||(m.kind!=="chest"&&m.kind!=="group")||m.gx==null||m.gz==null)continue;
+      liveXZ[Math.round(m.gx)+","+Math.round(m.gz)]=1;}
+    if(!Object.keys(liveXZ).length){el("sweepInfo").textContent="No chests loaded yet — reload the map (↻) before cleaning, so valid data isn't dropped.";return;}
+    function ok(k){var p=k.split(",");return p.length>=3&&liveXZ[p[0]+","+p[2]];}
+    var pairs=travelTimes.pairs||{},legs=travelTimes.legs||{},np={},nl={},drop=0,keep=0;
+    for(var pk in pairs){var e=pk.split("|");if(e.length===2&&ok(e[0])&&ok(e[1])){np[pk]=pairs[pk];keep++;}else drop++;}
+    for(var lk in legs){var e2=lk.split(">");if(e2.length===2&&ok(e2[0])&&ok(e2[1]))nl[lk]=legs[lk];else drop++;}
+    if(!drop){el("sweepInfo").textContent="✓ Nothing to clean — every travel time still has both chests.";return;}
+    if(!confirm("Remove "+drop+" travel time"+(drop===1?"":"s")+" measured to chests that no longer exist?\n\n"+keep+" will be kept. This frees room for new measurements; the removed ones re-learn automatically as routes get run.")) return;
+    var cleaned={id:"traveltimes",type:"travel",pairs:np,legs:nl};
+    el("sweepBtn").disabled=true;el("sweepInfo").textContent="Cleaning…";
+    fetch(API,{method:"POST",headers:writeHeaders(),body:JSON.stringify(cleaned)})
+      .then(function(r){return r.ok?r.json():Promise.reject();})
+      .then(function(){travelTimes=cleaned;el("sweepInfo").textContent="✓ Removed "+drop+" orphaned travel time"+(drop===1?"":"s")+" · "+keep+" kept.";})
+      .catch(function(){el("sweepInfo").textContent="⚠ Couldn't reach the server — try again.";})
+      .then(function(){el("sweepBtn").disabled=false;});
+  });
+  el("exportBtn").addEventListener("click",function(){
+    var snap=allEntriesSnapshot();
+    var payload={tool:"histatu-dungeon-map",version:1,exportedAt:new Date().toISOString(),entries:snap};
+    var blob=new Blob([JSON.stringify(payload,null,1)],{type:"application/json"});
+    var a=document.createElement("a"),d=new Date();
+    a.href=URL.createObjectURL(blob);
+    a.download="histatu-dungeon-backup-"+d.toISOString().slice(0,10)+".json";
+    document.body.appendChild(a);a.click();document.body.removeChild(a);
+    setTimeout(function(){URL.revokeObjectURL(a.href);},2000);
+    el("exportInfo").textContent="✓ downloaded "+Object.keys(snap).length+" entries";
+  });
+  var importAbort=false;
+  function isSharedSingleton(id){return id==="runs"||id==="traveltimes"||id==="calibration"||/^opens-/.test(id);}
+  el("importBtn").addEventListener("click",function(){el("importFile").click();});
+  el("importFile").addEventListener("change",function(){
+    var f=this.files&&this.files[0];this.value="";if(!f)return;
+    if(shared!==true){el("importInfo").textContent="⚠ Restore needs the shared map connected.";return;}
+    var reader=new FileReader();
+    reader.onload=function(){
+      var data;try{data=JSON.parse(reader.result);}catch(e){el("importInfo").textContent="⚠ Not a valid JSON file.";return;}
+      var ents=data&&data.entries&&typeof data.entries==="object"?data.entries:(data&&typeof data==="object"?data:null);
+      var ids=ents?Object.keys(ents):[];
+      if(!ids.length){el("importInfo").textContent="⚠ No entries found in that file.";return;}
+      var withShared=el("importShared").checked;
+      if(!withShared)ids=ids.filter(function(id){return !isSharedSingleton(id);}); // map structure only
+      if(!ids.length){el("importInfo").textContent="⚠ Nothing to restore (only shared logs in file — tick the box to include them).";return;}
+      var warn="Restore "+ids.length+" entries to the shared map for everyone? Same-id entries are overwritten; nothing is deleted.";
+      if(withShared)warn+="\n\n⚠ This also overwrites the shared leaderboard, every player's cooldown log, learned travel times and calibration with this file's snapshot — discarding anything added since the backup. (Directed per-leg stats are kept when the backup predates them.)";
+      if(!confirm(warn))return;
+      runImport(ents,ids);
+    };
+    reader.readAsText(f);
+  });
+  el("importCancel").addEventListener("click",function(){importAbort=true;});
+  function runImport(ents,ids){
+    importAbort=false;
+    el("importBtn").disabled=true;el("importCancel").hidden=false;
+    var i=0,ok=0,fail=0;
+    function step(){
+      if(importAbort||i>=ids.length){
+        el("importBtn").disabled=false;el("importCancel").hidden=true;
+        el("importInfo").textContent=(importAbort?"Stopped — ":"Done — ")+ok+" restored"+(fail?", "+fail+" failed":"")+". Refreshing…";
+        refresh(true);return;
+      }
+      var id=ids[i++],entry=ents[id];
+      el("importInfo").textContent="Restoring "+i+"/"+ids.length+"… ("+ok+" ok"+(fail?", "+fail+" failed":"")+")";
+      if(!entry||typeof entry!=="object"){fail++;return step();}
+      if(!entry.id)entry.id=id;
+      fetch(API,{method:"POST",headers:writeHeaders(),body:JSON.stringify(entry)})
+        .then(function(r){
+          if(r.status===429){i--;return new Promise(function(res){setTimeout(res,3000);});} // rate limited — wait and retry this one
+          if(r.ok)ok++;else fail++;
+        })
+        .catch(function(){fail++;})
+        // ~2.1s between writes keeps us just under the server's 30/min cap; the
+        // 429 wait+retry above is the backstop if a burst still trips it
+        .then(function(){setTimeout(step,2100);});
+    }
+    step();
+  }
+
+  /* ---------- theme + misc ---------- */
+  el("refreshBtn").addEventListener("click",function(){
+    if(anyModalOpen()){toast("Close the editor first");return;}
+    refresh(false);
+  });
+  document.addEventListener("keydown",function(e){
+    if(e.key==="Escape"){
+      if(calMode){calStop("Calibration cancelled");return;}
+      if(el("mOverlay").classList.contains("open"))closeMarkerEditor(true);
+      if(el("sOverlay").classList.contains("open"))closeStats();
+      ["rOverlay","binOverlay","lbOverlay","contribOverlay","pstatsOverlay","backupOverlay"].forEach(function(o){if(el(o).classList.contains("open"))el(o).classList.remove("open");});
+    }
+  });
+  var toastTimer=null;
+  function toast(msg){var t=el("toast");t.textContent=msg;t.classList.add("show");clearTimeout(toastTimer);toastTimer=setTimeout(function(){t.classList.remove("show");},2400);}
+  var TK="histatu_theme";
+  try{var th=localStorage.getItem(TK);if(th==="light"||th==="dark")document.documentElement.setAttribute("data-theme",th);}catch(e){}
+  el("theme").addEventListener("click",function(){
+    var cur=document.documentElement.getAttribute("data-theme");
+    if(!cur)cur=matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light";
+    var next=cur==="dark"?"light":"dark";document.documentElement.setAttribute("data-theme",next);
+    try{localStorage.setItem(TK,next);}catch(e){}
+  });
+
+  /* ---------- player cooldown picker ---------- */
+  el("playerIgn").value=player;
+  el("playerIgn").addEventListener("change",function(){
+    player=this.value.trim();
+    try{localStorage.setItem(K_PLAYER,player);}catch(e){}
+    render();
+    if(player)toast("Showing chest cooldowns for "+player);
+  });
+
+  /* ---------- boot ---------- */
+  syncEditorUI();
+  render();
+  refresh(true).then(function(){
+    // deep-link from the companion app's "Sign in" button: open the sign-in flow straight away
+    // (unless this device is already signed in)
+    if(/[?&]signin=1/.test(location.search)&&!signedIn()){try{startSignIn();}catch(e){}}
+  });
+  setInterval(function(){if(shared===true&&!anyModalOpen()&&!drag)refresh(true);},60000);
+  function anyModalOpen(){return el("mOverlay").classList.contains("open")||el("rOverlay").classList.contains("open")||el("sOverlay").classList.contains("open")||el("binOverlay").classList.contains("open")||el("lbOverlay").classList.contains("open")||el("contribOverlay").classList.contains("open")||el("pstatsOverlay").classList.contains("open")||el("backupOverlay").classList.contains("open")||el("verOverlay").classList.contains("open")||el("acOverlay").classList.contains("open");}
+
+  // expose for testing
+  window.__dm={get entries(){return entries;},set entries(v){entries=v;},get pubRoutes(){return pubRoutes;},get draftRoutes(){return draftRoutes;},
+    render:render,groupClass:groupClass,parseTime:parseTime,fmtTime:fmtTime,setTool:setTool,newMarkerAt:newMarkerAt,addToActiveRoute:addToActiveRoute,
+    mobCats:mobCats,catInfo:catInfo,routeMobcoins:routeMobcoins,
+    get catOverrides(){return catOverrides;},set catOverrides(v){catOverrides=v;},
+    fmtAmt:fmtAmt,worldToMap:worldToMap,
+    chestClusters:chestClusters,playerOpens:playerOpens,coolMsLeft:coolMsLeft,coolKey:coolKey,live:live,
+    binItems:binItems,renderBin:renderBin,purgeExpired:purgeExpired,
+    renderLeaderboards:renderLeaderboards,routeBestLabel:routeBestLabel,allEntriesSnapshot:allEntriesSnapshot,isSharedSingleton:isSharedSingleton,
+    get runsLog(){return runsLog;},set runsLog(v){runsLog=v;},
+    get contribLog(){return contribLog;},set contribLog(v){contribLog=v;},
+    get areasLog(){return areasLog;},set areasLog(v){areasLog=v;},
+    get areaTotals(){return areaTotals;},set areaTotals(v){areaTotals=v;},
+    get areaDraw(){return areaDraw;},set areaDraw(v){areaDraw=v;drawAreas();},
+    areaEditStart:areaEditStart,
+    get shared(){return shared;},set shared(v){shared=v;},
+    get travelTimes(){return travelTimes;},set travelTimes(v){travelTimes=v;},
+    get openLogs(){return openLogs;},set openLogs(v){openLogs=v;},
+    get player(){return player;},set player(v){player=v;},
+    get expandedCluster(){return expandedCluster;},set expandedCluster(v){expandedCluster=v;},
+    get zoom(){return zoom;},set zoom(v){zoom=v;},
+    get calibration(){return calibration;},set calibration(v){calibration=v;},
+    get activeRoute(){return activeRoute;},set activeRoute(v){activeRoute=v;},
+    get authRequired(){return authRequired;},set authRequired(v){authRequired=v;},
+    get pendings(){return pendings;},set pendings(v){pendings=v;},
+    get editorKey(){return editorKey;},set editorKey(v){editorKey=v;},
+    canEdit:canEdit,syncEditorUI:syncEditorUI,verifyPending:verifyPending,openVerify:openVerify,
+    approvePending:approvePending,rejectPending:rejectPending,timeAgo:timeAgo,openMarkerEditor:openMarkerEditor,
+    get ratings(){return ratings;},set ratings(v){ratings=v;},ratingStats:ratingStats,ignSlug:ignSlug,
+    openRouteEditor:openRouteEditor,renderRouteList:renderRouteList,
+    misalignInfo:misalignInfo,misalignActive:misalignActive,fitAxis:fitAxis,realignPlan:realignPlan,checkAlignment:checkAlignment,replaceBulk:replaceBulk,
+    startSignIn:startSignIn,openAccount:openAccount,syncEditorUI:syncEditorUI,writeHeaders:writeHeaders,
+    signedIn:signedIn,canEdit:canEdit,isOwner:isOwner,setPlayerKey:setPlayerKey,
+    get me(){return me;},set me(v){me=v;},get playerKey(){return playerKey;},
+    get pubRoutesRef(){return pubRoutes;}};
+})();
+</script>
+</body>
+</html>

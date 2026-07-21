@@ -1,0 +1,35 @@
+# --- IDEs & editors ---
+.idea/
+*.iml
+.vscode/
+*.swp
+*.swo
+*~
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+dist/
+
+# --- OS files ---
+.DS_Store
+Thumbs.db
+
+# --- AI assistant / editor session files (local tooling, never source) ---
+.claude/
+CLAUDE.md
+CLAUDE.local.md
+
+# --- Build / generated / local state (never commit these) ---
+node_modules/
+*.log
+build/
+*.exe
+# the runner's LOCAL config — holds YOUR ign and (for editors) YOUR write key
+capture_config.json
+read_debug.log*
+# generated per-build by build.bat / the release workflow (edition marker)
+companion/histatu-capture/_edition.py
