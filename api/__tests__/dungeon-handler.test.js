@@ -132,6 +132,21 @@ function uuidFor(name) {
     // a regular player signs in -> role player
     const al = await signIn(h, store, "Alice");
     t("identity: a fresh account binds as player", al.role === "player" && al.ign === "Alice");
+
+    // the owner signed in BEFORE OWNER_IGN was configured: the stored role is "player", but the
+    // promotion is LIVE — once the env var exists, the same key reads back as owner, no re-sign-in
+    {
+      const store2 = makeStore();
+      const bare = loadHandler({}, store2);                     // OWNER_IGN not configured yet
+      const early = await signIn(bare, store2, "BlakeBiz");
+      t("identity: owner signing in pre-config binds as player", early.role === "player");
+      const fixed = loadHandler({ OWNER_IGN: "BlakeBiz" }, store2);
+      const g2 = await call(fixed, { method: "GET", headers: { "x-player-key": early.playerKey } });
+      t("identity: setting OWNER_IGN promotes the existing binding live (same key, no re-sign-in)",
+        g2.body.me && g2.body.me.role === "owner");
+      const g3 = await call(fixed, { method: "GET" });
+      t("identity: live promotion never leaks into keyless requests", !g3.body.me);
+    }
     // pending sign-in: not approved yet -> pending:true, no key
     store.hytale.approved = false;
     const s2 = await call(h, { method: "POST", body: { type: "authstart" } });

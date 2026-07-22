@@ -128,7 +128,10 @@ async function actor(c, req) {
   if (!pRaw) return null;
   let p; try { p = JSON.parse(pRaw); } catch (e) { return null; }
   if (p.keyHash !== h) return null;
-  const role = p.role === "owner" || p.role === "editor" ? p.role : "player";
+  let role = p.role === "owner" || p.role === "editor" ? p.role : "player";
+  // the OWNER_IGN account is owner LIVE, not just at sign-in time — otherwise signing in
+  // before the env var was configured would lock the owner in as "player" until a re-sign-in
+  if (OWNER_IGN && slugify(OWNER_IGN) === p.slug) role = "owner";
   return { uuid: p.uuid, ign: p.ign, slug: p.slug, role };
 }
 function isEditor(who) { return !!(who && (who.role === "owner" || who.role === "editor")); }
