@@ -5,15 +5,15 @@
 // update check, decoupled from GitHub UI/API details. The file itself never
 // streams through here.
 //
-// Two editions ship per release (see the runner's EDITION flag):
-//   full   — HistatuRunner.exe        (default: OCR + detection reports)
-//   lite   — HistatuRunner-Lite.exe   (never captures/sends anything)
+// One Windows build ships per release: HistatuRunner.exe.
 //
-//   GET /api/download                    -> 302 to the Windows full build
-//   GET /api/download?edition=lite       -> 302 to the Windows lite build
+//   GET /api/download                    -> 302 to the Windows build
 //   GET /api/download?os=linux           -> 302 to the Linux source .zip
-//   GET /api/download?meta=1             -> {tag, full, lite, linux} sizes for the
+//   GET /api/download?meta=1             -> {tag, full, windows, linux} sizes for the
 //                                           get-app page and the app's own update check
+//
+// The legacy ?edition= param (and the `lite` meta field) are still accepted so older
+// installed builds' update checks keep resolving to the single current exe.
 //
 // This repo is PUBLIC, so no token is required — GitHub's release API works
 // unauthenticated. GITHUB_TOKEN is still honoured when set (higher API rate
@@ -43,10 +43,10 @@ function pickAsset(rel, kind) {
   if (kind === "linux") {
     return assets.find(a => /linux|src|source/i.test(a.name) && /\.(zip|tar\.gz)$/i.test(a.name)) || null;
   }
+  // one Windows exe now; any edition request (incl. legacy ?edition=lite from old installs)
+  // resolves to it. Prefer a non-lite-named exe if an old release still has both.
   const exes = assets.filter(a => /\.exe$/i.test(a.name));
-  if (kind === "lite") return exes.find(a => /lite/i.test(a.name)) || null;
-  // full: an .exe that is not the lite build
-  return exes.find(a => !/lite/i.test(a.name)) || null;
+  return exes.find(a => !/lite/i.test(a.name)) || exes[0] || null;
 }
 
 module.exports = async (req, res) => {
@@ -55,23 +55,20 @@ module.exports = async (req, res) => {
     const rel = await latestRelease(token);
     const q = req.query || {};
     if (q.meta) {
-      const f = pickAsset(rel, "full"), lite = pickAsset(rel, "lite");
-      const lin = pickAsset(rel, "linux");
+      const f = pickAsset(rel, "full"), lin = pickAsset(rel, "linux");
       const meta = (a) => a ? { name: a.name, size: a.size } : null;
       res.setHeader("Cache-Control", "public, max-age=300");
       return res.status(200).json({
         tag: rel.tag_name || null,
         full: meta(f),
         windows: meta(f),          // back-compat alias for older app builds
-        lite: meta(lite),
+        lite: meta(f),             // legacy field: same single exe (older lite installs read this)
         linux: meta(lin),
       });
     }
     const os = String(q.os || "").toLowerCase();
-    const edition = String(q.edition || "").toLowerCase();
-    let kind = "full";
+    let kind = "full";             // ?edition= is legacy-accepted but always the single exe now
     if (os === "linux") kind = "linux";
-    else if (edition === "lite") kind = "lite";
 
     const asset = pickAsset(rel, kind);
     if (!asset) return res.status(404).json({ error: "no build for that platform/edition in the latest release yet" });

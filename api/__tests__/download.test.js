@@ -12,7 +12,6 @@ const RELEASE = {
   assets: [
     { name: "HistatuRunner.exe", size: 21700000, url: "https://api.github.com/assets/1" },
     { name: "HistatuRunner-linux-src.zip", size: 90000, url: "https://api.github.com/assets/2" },
-    { name: "HistatuRunner-Lite.exe", size: 20500000, url: "https://api.github.com/assets/3" },
   ],
 };
 
@@ -73,15 +72,15 @@ function mkRes() {
     await h({ query: { meta: "1" } }, mkRes());
     t("token (when set) is sent to GitHub", f.calls[0].init.headers.Authorization === "Bearer tok");
   }
-  // meta returns tag + full/lite assets
+  // meta returns tag + the single exe (full/windows/lite all alias it) + linux
   {
     const h = loadHandler({ GITHUB_TOKEN: "tok" }, makeFetch(RELEASE));
     const res = mkRes();
     await h({ query: { meta: "1" }, headers: {} }, res);
-    t("meta: tag + full/lite names/sizes", res.statusCode === 200 && res.body.tag === "v1.0.4"
-      && res.body.full.name === "HistatuRunner.exe" && res.body.lite.name === "HistatuRunner-Lite.exe"
-      && res.body.linux.size === 90000);
-    t("meta: windows back-compat alias = full", res.body.windows.name === "HistatuRunner.exe");
+    t("meta: tag + single-exe name/size + linux", res.statusCode === 200 && res.body.tag === "v1.0.4"
+      && res.body.full.name === "HistatuRunner.exe" && res.body.linux.size === 90000);
+    t("meta: windows + legacy lite fields both alias the single exe",
+      res.body.windows.name === "HistatuRunner.exe" && res.body.lite.name === "HistatuRunner.exe");
     t("meta: no editor key in the payload", !("editor" in res.body));
   }
   // full (default) -> 302 to the signed exe URL, NOT lite
@@ -95,12 +94,12 @@ function mkRes() {
     t("asset fetched as octet-stream, no auto-follow", assetCall
       && assetCall.init.redirect === "manual" && assetCall.init.headers.Accept === "application/octet-stream");
   }
-  // lite -> the lite exe
+  // legacy ?edition=lite (old installs' update check) -> the single current exe
   {
     const h = loadHandler({ GITHUB_TOKEN: "tok" }, makeFetch(RELEASE));
     const res = mkRes();
     await h({ query: { edition: "lite" }, headers: {} }, res);
-    t("edition=lite -> 302 signed lite exe", res.statusCode === 302 && res.headers.Location === "https://signed.example/3");
+    t("legacy edition=lite -> 302 signed single exe", res.statusCode === 302 && res.headers.Location === "https://signed.example/1");
   }
   // legacy ?edition=editor now falls through to the FULL build (seamless migration for old Editor.exe users)
   {

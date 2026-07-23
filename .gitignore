@@ -31,5 +31,3 @@ build/
 # the runner's LOCAL config — holds YOUR ign and (for editors) YOUR write key
 capture_config.json
 read_debug.log*
-# generated per-build by build.bat / the release workflow (edition marker)
-companion/histatu-capture/_edition.py

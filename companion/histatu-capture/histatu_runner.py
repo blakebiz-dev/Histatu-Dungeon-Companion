@@ -87,7 +87,7 @@ else:
         print("Note: for global key detection on Wayland, install python-evdev "
               "(pip install evdev) and add your user to the 'input' group.")
 
-__version__ = "1.0.21"
+__version__ = "1.0.22"
 
 # When packaged as a standalone .exe (Nuitka onefile / PyInstaller), __file__ points
 # inside a temporary unpack dir that's wiped on exit — config written there wouldn't
@@ -99,20 +99,6 @@ if FROZEN:
 else:
     APP_DIR = os.path.dirname(os.path.abspath(__file__))
 CONFIG_PATH = os.path.join(APP_DIR, "capture_config.json")
-
-# ---- edition ---------------------------------------------------------------
-# Two builds ship from one source, chosen at build time:
-#   lite   — no detection-report uploader; the button just points to the Full build.
-#   full   — the public build (default): OCR + optional detection reports.
-# The build writes a tiny _edition.py; from source it defaults to "full" and can be
-# overridden with the HISTATU_EDITION env var for local testing.
-try:
-    from _edition import EDITION            # generated at build time (git-ignored)
-except Exception:
-    EDITION = os.environ.get("HISTATU_EDITION", "full")
-if EDITION not in ("lite", "full"):
-    EDITION = "full"
-IS_LITE = EDITION == "lite"
 
 DEFAULT_CONFIG = {
     "api_base": "https://blakebiz-dungeon-companion.vercel.app/api/dungeon",
@@ -232,11 +218,7 @@ def reset_hour_from_epoch(ov):
 SITE_BASE = "https://blakebiz-dungeon-companion.vercel.app"
 UPDATE_META_URL = SITE_BASE + "/api/download?meta=1"
 DOWNLOAD_URL = SITE_BASE + "/api/download"
-DEBUG_UPLOAD_URL = SITE_BASE + "/api/debug"
 APP_PAGE_URL = SITE_BASE + "/tools/dungeon-loot-map/get-app.html"
-DEBUG_WINDOW_SEC = 180      # a detection-report capture runs for this long, then auto-sends
-DEBUG_MAX_FRAMES = 12       # cap frames per report so uploads stay small
-DEBUG_MAX_BYTES = 900000    # cap total pre-base64 image bytes (~well under the endpoint's limit)
 
 
 def self_update_swap(exe_path, new_path):
@@ -279,8 +261,7 @@ def latest_release(timeout=6):
     except Exception:
         return None
     tag = data.get("tag")
-    # self-update to the SAME edition the user is running (lite→lite, full→full)
-    return (tag, DOWNLOAD_URL + "?edition=" + EDITION) if tag else None
+    return (tag, DOWNLOAD_URL) if tag else None
 
 VK = {"LMB": 0x01, "RMB": 0x02, "MMB": 0x04, "MOUSE4": 0x05, "MOUSE5": 0x06,
       "DELETE": 0x2E, "DEL": 0x2E, "INSERT": 0x2D, "END": 0x23, "HOME": 0x24,
@@ -1209,7 +1190,7 @@ class HudReader:
             self.misses = 0
             self.acquired = True  # first fix landed — steady-state polls can stay cheap
         out["texts"] = texts  # raw OCR attempts — for the failed-read diagnostics log
-        out["strip_texts"] = strip_texts  # panel-region text only — safe for detection reports
+        out["strip_texts"] = strip_texts  # panel-region OCR text only (never leaves the machine)
         return out
 
 
@@ -2263,7 +2244,6 @@ class App:
         self._hud_reset_cand = None   # a new reset observation awaiting its second reading
         self._hud_scan_t = 0          # last HUD OCR pass
         self._success_log_t = 0       # throttle for logging raw OCR of successfully-read chests
-        self._debug = None            # active detection-report capture session (or None)
         self._hud_band = None         # (y0, y1) where the movable HUD panel currently sits
         self._hud_miss = 0            # consecutive band reads without the panel
         self._hud_seek_t = 0          # last full-frame rediscovery attempt
@@ -2339,7 +2319,7 @@ class App:
                      font=(UIFONT, 8, "bold")).pack(side="left", padx=6)
         for txt, cmd, tip in (("✕", self.root.destroy, "Close Histatu Runner"),
                               ("⚙", self._open_settings, "Settings — hotkeys, poll rate, reset hour, "
-                                                          "and 🐞 report a detection issue"),
+                                                          "window title"),
                               ("ⓘ", self._show_help, "How to use the tool"),
                               ("⤢", self.dock, "Dock into the corner of the game window")):
             self._iconbtn(bar, txt, cmd, tip=tip).pack(side="right", padx=(2, 0))
@@ -2559,10 +2539,9 @@ class App:
                           "♻ Reset my cooldowns marks them all available again after the random "
                           "in-game event that unlocks every chest early."),
             ("Trouble reading a chest?",
-             ("This is Histatu Runner Lite — it never captures or sends anything. Get the Full "
-              "version to send a short diagnostic that helps fix hard-to-read chests." if IS_LITE
-              else "⚙ Settings → 🐞 Report detection issue captures a short, panel-region-only "
-                   "diagnostic and sends it (privately, deleted after review) for a fix.")),
+             "Keep the F7 WORLD panel visible and uncovered. If chests still won't read at your "
+             "resolution, re-run 🩺 Capture Doctor (⚙ Settings) — it re-measures the best OCR "
+             "zoom for your screen."),
         ]
         for head, body in steps:
             tk.Label(dlg, text=head, fg=ACCENT, bg=BG, font=(UIFONT, 9, "bold")).pack(
@@ -3042,16 +3021,6 @@ class App:
                   lambda: (dlg.destroy(), self._open_setup_wizard())).pack(side="left")
         tk.Label(dlg, text="Re-measures the best OCR zoom, signal health, and your travel pace for "
                            "this device. Run it after changing monitor, resolution, or GUI scale.",
-                 fg=FG3, bg=BG, font=("Segoe UI", 8), wraplength=320, justify="left").pack(
-            padx=14, pady=(5, 0), anchor="w")
-
-        # ---- detection reporting: a real, visible button — new users on unusual resolutions hit
-        #      chest-read issues early, so this needs to be easy to find (not a buried text link) ----
-        tk.Frame(dlg, bg=BORDER, height=1).pack(fill="x", padx=14, pady=(14, 0))
-        drow = tk.Frame(dlg, bg=BG); drow.pack(fill="x", padx=14, pady=(10, 0))
-        self._btn(drow, "🐞 Report a detection issue", lambda: (dlg.destroy(), self._start_debug())).pack(side="left")
-        tk.Label(dlg, text="Chests not reading right at your resolution? This captures a short, panel-only "
-                           "clip (with your consent) so the OCR can be tuned — deleted after review.",
                  fg=FG3, bg=BG, font=("Segoe UI", 8), wraplength=320, justify="left").pack(
             padx=14, pady=(5, 0), anchor="w")
 
@@ -3644,8 +3613,6 @@ class App:
         frame = grab_game(self.cfg)
         hud = self.hud.read(frame, want_target=True, thorough=True)  # try hard to read the target
         synced = bool(hud["position"])
-        if self._debug is not None:  # detection-report capture active: grab this press's frame
-            self._debug_capture(frame, hud)
         if synced:
             self.dr.sync(hud["position"], hud["yaw"], at=at, yaw_exact=hud["yaw_exact"],
                          speed=hud.get("speed"))
@@ -3730,137 +3697,6 @@ class App:
                     f.write("    ocr: %s\n" % tx[:400])
         except Exception:
             pass  # diagnostics must never break chest handling
-
-    def _offer_full_upgrade(self):
-        """Lite build: the detection reporter isn't included. Explain why and offer the Full
-        build, which adds it. Nothing is captured or sent from Lite."""
-        if messagebox.askyesno(
-                "Detection reporting — Full version",
-                "You're running Histatu Runner Lite, which never captures or sends any "
-                "screenshots or logs.\n\n"
-                "Reporting a detection issue (a short, panel-region-only screenshot capture that "
-                "helps fix chests the tool can't read) is part of the Full version.\n\n"
-                "Open the download page to get the Full version?"):
-            try:
-                webbrowser.open(APP_PAGE_URL)
-            except Exception:
-                pass
-
-    # ---------------- detection-issue report (user-initiated, time-limited) ----------------
-    def _start_debug(self):
-        """Begin a ~3-minute capture: each chest press records the top-right game panel region
-        + the parse result; at the end the bundle uploads for review. Explicit, labeled, and it
-        captures only that panel region — not the full screen — and never the editor key.
-        The uploaded log is built DURING the session from strip-region OCR only; the on-disk
-        read_debug.log (which can hold full-frame rescan text) is never uploaded."""
-        if IS_LITE:
-            self._offer_full_upgrade()
-            return
-        if self._debug is not None:
-            self._finish_debug(manual=True)
-            return
-        if not messagebox.askokcancel(
-                "Report a detection issue",
-                "This helps fix chests the tool can't read. For about 3 minutes it captures, "
-                "on each chest press:\n\n"
-                "  • a screenshot of ONLY the top-right game panel region (where the F7\n"
-                "     coordinates show) — never your full screen, chat, or other windows\n"
-                "  • the text the tool read from that panel region, and what it parsed\n"
-                "     (the coordinates it saw)\n\n"
-                "If the game window can't be found, nothing is captured — the report just\n"
-                "says so. When the 3 minutes are up it's sent for review.\n\n"
-                "What is NOT included:\n"
-                "  • your editor key or any password\n"
-                "  • anything outside that panel region\n\n"
-                "Where it goes: a PRIVATE GitHub report (not stored on the website), and it's\n"
-                "permanently DELETED once it's been reviewed.\n\n"
-                "After you click OK, go open the chest that won't detect. Start?"):
-            return
-        d = {"until": time.time() + DEBUG_WINDOW_SEC, "frames": [], "bytes": 0, "res": "",
-             "log": ""}
-        self._debug = d
-        # the timer finishes only ITS OWN session — a manual finish + restart must not let the
-        # stale timer cut the new session short
-        self.root.after(DEBUG_WINDOW_SEC * 1000, lambda: self._finish_debug(expected=d))
-        self.set_status("🐞 Debug capture ON (~3 min) — open the chest that won't detect. "
-                        "It sends automatically when done.", WARN)
-
-    def _debug_log(self, d, line):
-        if len(d["log"]) < 30000:
-            d["log"] += "[%s] %s\n" % (time.strftime("%H:%M:%S"), line)
-
-    def _debug_capture(self, frame, hud):
-        d = self._debug
-        if d is None or time.time() > d["until"] or len(d["frames"]) >= DEBUG_MAX_FRAMES \
-                or d["bytes"] >= DEBUG_MAX_BYTES:
-            return
-        try:
-            # only ship pixels that verifiably came from the game window: when it can't be
-            # located, grab_game() falls back to the full desktop and the "strip" crop would be
-            # the top-right of the user's SCREEN — record the fact instead of the pixels.
-            bbox = find_game_window(self.cfg["window_title"])
-            if not bbox or (frame.width, frame.height) != (bbox[2] - bbox[0], bbox[3] - bbox[1]):
-                self._debug_log(d, "game window not located (title=%r) — pixels NOT captured"
-                                % self.cfg["window_title"])
-                return
-            d["res"] = "%dx%d" % (frame.width, frame.height)
-            strip = self.hud._strip(frame)
-            if strip.width > 900:
-                sc = 900.0 / strip.width
-                strip = strip.resize((900, max(1, int(strip.height * sc))), Image.LANCZOS)
-            buf = io.BytesIO()
-            strip.convert("RGB").save(buf, "JPEG", quality=82)
-            jpg = buf.getvalue()
-            note = "pos=%s target=%s chest=%s" % (hud.get("position"), hud.get("target"),
-                                                  chest_coords(hud.get("target")))
-            d["frames"].append({"note": note[:300],
-                                "jpg": "data:image/jpeg;base64," + base64.b64encode(jpg).decode()})
-            d["bytes"] += len(jpg)
-            self._debug_log(d, note[:300])
-            for tx in (hud.get("strip_texts") or [])[-2:]:  # panel-region OCR text only
-                self._debug_log(d, "    ocr: %s" % tx[:400])
-        except Exception:
-            pass  # capture is best-effort — never disrupt a chest press
-
-    def _finish_debug(self, manual=False, expected=None):
-        d = self._debug
-        if d is None or (expected is not None and d is not expected):
-            return  # the timer's session already ended manually — don't touch a newer one
-        self._debug = None
-        if not d["frames"] and not d["log"]:
-            self.set_status("🐞 Debug capture ended — no chest presses were recorded. Start it "
-                            "again, then open the problem chest.", WARN)
-            return
-        self.set_status("🐞 Sending detection report (%d frame%s)…"
-                        % (len(d["frames"]), "" if len(d["frames"]) == 1 else "s"))
-        threading.Thread(target=self._upload_debug,
-                         args=(d["frames"], d.get("res", ""), d.get("log", "")),
-                         daemon=True).start()
-
-    def _upload_debug(self, frames, res, log=""):
-        try:
-            # a compact, secret-free config summary — the useful knobs, never the write key
-            g = self.cfg.get
-            note = ("IGN=%s mode=%s | poll=%s reset_hour_et=%s window=%s | keys chest=%s log=%s "
-                    "| move_speed=%s dry=%s"
-                    % (g("ign", ""), self.mode, g("ocr_poll_sec"), g("reset_hour_et"),
-                       g("window_title"), g("hotkey_chest"), g("hotkey_log"),
-                       g("move_speed"), g("dry_run")))
-            bundle = {"version": __version__,
-                      "platform": "%s%s" % (sys.platform, " wayland" if IS_WAYLAND else ""),
-                      "resolution": res, "note": note[:500],
-                      "log": log, "frames": frames}
-            data = json.dumps(bundle).encode()
-            req = urllib.request.Request(DEBUG_UPLOAD_URL, data=data, method="POST",
-                                         headers={"Content-Type": "application/json",
-                                                  "User-Agent": "HistatuRunner/" + __version__})
-            with urllib.request.urlopen(req, timeout=30) as r:
-                res = json.loads(r.read().decode() or "{}")
-            self.set_status("🐞 Detection report sent — thank you! (id %s)"
-                            % str(res.get("id", "?")), GOOD)
-        except Exception as e:
-            self.set_status("⚠ Couldn't send the report (%s). read_debug.log next to the app "
-                            "still has the details." % e, BAD)
 
     def _near(self, pos, yaw, coords):
         """Is the player dead-reckoned to be right at `coords` (and, if heading is known, facing
@@ -4639,7 +4475,7 @@ def test_once(cfg):
 
 def main():
     if "--version" in sys.argv or "-V" in sys.argv:
-        print("Histatu Runner " + __version__ + ("" if EDITION == "full" else " [" + EDITION + "]"))
+        print("Histatu Runner " + __version__)
         return
     make_dpi_aware()
     if FROZEN:  # tidy up after a self-update: the previous binary was renamed aside

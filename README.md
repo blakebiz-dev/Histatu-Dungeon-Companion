@@ -22,11 +22,10 @@ It **never**:
 - injects into or modifies the game, its memory, or its files (Hytale doesn't allow client mods,
   and neither do we);
 - reads network traffic or packets;
-- captures anything outside the F7 panel region it needs;
+- captures or uploads any screenshot — it OCRs the F7 panel region in memory and never sends an image;
 - sends anything you didn't ask it to. What it shares when you use it: chest locations you log,
   your chest opens (under your in-game name, for cooldown tracking), measured travel times between
-  chests, and route completion times. The **Lite** edition additionally strips the opt-in
-  detection-report feature, so it can never upload a capture at all.
+  chests, and route completion times.
 
 Don't take the README's word for it — [`histatu_runner.py`](companion/histatu-capture/histatu_runner.py)
 is the whole app, and the release workflow in
@@ -48,7 +47,6 @@ from **⚙ Settings → 🩺 Re-run setup** — do that after changing monitor, 
 | `index.html` | The live map — a single self-contained page (pins, areas, routes, leaderboards, editor tools) |
 | `get-app.html` | Download page for the runner |
 | `api/dungeon.js` | The shared-map API (one Vercel function, Upstash Redis storage) |
-| `api/debug.js` | Opt-in detection reports (private gists, editor-reviewed, deleted after review) |
 | `api/download.js` | Stable download/update endpoint that redirects to the latest GitHub release |
 | `api/__tests__/` | Server test suites (run with `node`) |
 | `companion/histatu-capture/` | Histatu Runner — the overlay app (Python/Tkinter), its tests, and build scripts |
@@ -96,9 +94,9 @@ workflow; the published exes are built by GitHub Actions from the tagged source,
 
 ```
 node api/__tests__/dungeon-validate.test.js     # 168 tests
-node api/__tests__/dungeon-handler.test.js      #  98 tests
-node api/__tests__/debug.test.js && node api/__tests__/download.test.js
-cd companion/histatu-capture && python test_runner.py   # 390 tests
+node api/__tests__/dungeon-handler.test.js      # 101 tests
+node api/__tests__/download.test.js             #  15 tests
+cd companion/histatu-capture && python test_runner.py   # 380 tests
 ```
 
 ## Self-hosting your own map
@@ -112,7 +110,6 @@ set the environment variables:
 | `OWNER_IGN` | yes | Your Hytale in-game name — that verified account becomes the map **owner** |
 | `DUNGEON_WRITE_KEY` | optional | Break-glass master key (acts as owner). **20+ random chars.** Never shown in any UI; leave unset unless you want a recovery key |
 | `HYTALE_OAUTH_CLIENT_ID` / `HYTALE_OAUTH_SCOPE` | optional | Override the device-flow client (defaults to Hytale's `hytale-server`) |
-| `GITHUB_GIST_TOKEN` | optional | Enables opt-in detection reports (gist scope only) |
 | `GITHUB_TOKEN` | optional | Raises GitHub API rate limits for the download endpoint |
 | `DOWNLOAD_REPO` | optional | `owner/repo` to serve releases from (defaults to this repo) |
 

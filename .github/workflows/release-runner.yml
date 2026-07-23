@@ -39,49 +39,37 @@ jobs:
       - name: Refresh icon
         run: python make_icon.py
 
-      - name: Build editions (full / lite)
+      - name: Build HistatuRunner.exe
         shell: bash
         run: |
           # single source of truth: the __version__ string in the app
           VER=$(grep -oE '__version__ = "[0-9]+\.[0-9]+\.[0-9]+"' histatu_runner.py | grep -oE '[0-9]+\.[0-9]+\.[0-9]+')
           echo "Building version $VER"
+          python -m nuitka \
+            --onefile \
+            --assume-yes-for-downloads \
+            --enable-plugin=tk-inter \
+            --windows-console-mode=disable \
+            --include-package=winsdk \
+            --include-package-data=winsdk \
+            --windows-icon-from-ico=icon.ico \
+            --company-name=Histatu \
+            --product-name="Histatu Runner" \
+            --file-description="Histatu dungeon runner overlay for Hytale" \
+            --file-version="${VER}.0" \
+            --product-version="$VER" \
+            --output-filename="HistatuRunner.exe" \
+            --output-dir=build \
+            histatu_runner.py
 
-          build_edition () {
-            ED="$1"; OUT="$2"
-            echo "== $OUT (edition=$ED) =="
-            printf 'EDITION = "%s"\n' "$ED" > _edition.py
-            python -m nuitka \
-              --onefile \
-              --assume-yes-for-downloads \
-              --enable-plugin=tk-inter \
-              --windows-console-mode=disable \
-              --include-package=winsdk \
-              --include-package-data=winsdk \
-              --include-module=_edition \
-              --windows-icon-from-ico=icon.ico \
-              --company-name=Histatu \
-              --product-name="Histatu Runner" \
-              --file-description="Histatu dungeon runner overlay for Hytale" \
-              --file-version="${VER}.0" \
-              --product-version="$VER" \
-              --output-filename="$OUT" \
-              --output-dir=build \
-              histatu_runner.py
-          }
-          build_edition full   HistatuRunner.exe
-          build_edition lite   HistatuRunner-Lite.exe
-          rm -f _edition.py
-
-      - name: Verify the exes built
+      - name: Verify the exe built
         shell: bash
         run: |
-          for f in HistatuRunner.exe HistatuRunner-Lite.exe; do
-            test -f "build/$f" || { echo "$f missing"; exit 1; }
-            size=$(stat -c%s "build/$f")
-            echo "$f is $size bytes"
-            # a real onefile bundle is tens of MB; anything tiny means the build broke
-            test "$size" -gt 5000000 || { echo "$f suspiciously small"; exit 1; }
-          done
+          test -f build/HistatuRunner.exe || { echo "exe missing"; exit 1; }
+          size=$(stat -c%s build/HistatuRunner.exe)
+          echo "HistatuRunner.exe is $size bytes"
+          # a real onefile bundle is tens of MB; anything tiny means the build broke
+          test "$size" -gt 5000000 || { echo "exe suspiciously small"; exit 1; }
 
       - name: Package Linux source zip
         shell: pwsh
@@ -98,7 +86,6 @@ jobs:
           name: HistatuRunner-windows
           path: |
             companion/histatu-capture/build/HistatuRunner.exe
-            companion/histatu-capture/build/HistatuRunner-Lite.exe
             companion/histatu-capture/build/HistatuRunner-linux-src.zip
 
       - name: Attach to Release (tag builds only)
@@ -107,6 +94,5 @@ jobs:
         with:
           files: |
             companion/histatu-capture/build/HistatuRunner.exe
-            companion/histatu-capture/build/HistatuRunner-Lite.exe
             companion/histatu-capture/build/HistatuRunner-linux-src.zip
           generate_release_notes: true
