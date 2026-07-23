@@ -751,7 +751,9 @@
 
   /* ---------- sync ---------- */
   function refresh(quiet){
-    return fetch(API,{cache:"no-store"}).then(function(r){
+    // the key MUST ride along on GET — it's how the server tells us who we are (me/role);
+    // without it every refresh looked anonymous and instantly wiped the stored key below
+    return fetch(API,{cache:"no-store",headers:playerKey?{"x-player-key":playerKey}:{}}).then(function(r){
       if(r.status===503)throw{notConfigured:true};
       if(!r.ok)throw new Error("http "+r.status);
       return r.json();
@@ -759,7 +761,8 @@
       var firstConnect=shared!==true;
       authRequired=data.authRequired!==false;
       me=(data.me&&data.me.ign)?data.me:null;  // server is the source of truth for who this key is
-      if(playerKey&&!me){setPlayerKey("");}     // key was reset/rotated elsewhere — forget it locally
+      if(playerKey&&!me&&data.keyValid===false){setPlayerKey("");}  // ONLY when the server explicitly
+                                                // rejected the key (rotated/reset) — never on a me-less blip
       var all=data.entries&&typeof data.entries==="object"?data.entries:{};
       entries={};pubRoutes={};catOverrides={};calibration=null;openLogs={};runsLog=null;travelTimes=null;pendings={};ratings={};contribLog=null;areasLog={};areaTotals=null;
       for(var id in all){var e=all[id];
