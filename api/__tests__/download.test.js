@@ -10,7 +10,7 @@ const t = (name, cond) => { console.log((cond ? "PASS" : "FAIL") + " " + name); 
 const RELEASE = {
   tag_name: "v1.0.4",
   assets: [
-    { name: "HistatuRunner.exe", size: 21700000, url: "https://api.github.com/assets/1" },
+    { name: "HistatuRunner-windows.zip", size: 41700000, url: "https://api.github.com/assets/1" },
     { name: "HistatuRunner-linux-src.zip", size: 90000, url: "https://api.github.com/assets/2" },
   ],
 };
@@ -77,10 +77,10 @@ function mkRes() {
     const h = loadHandler({ GITHUB_TOKEN: "tok" }, makeFetch(RELEASE));
     const res = mkRes();
     await h({ query: { meta: "1" }, headers: {} }, res);
-    t("meta: tag + single-exe name/size + linux", res.statusCode === 200 && res.body.tag === "v1.0.4"
-      && res.body.full.name === "HistatuRunner.exe" && res.body.linux.size === 90000);
-    t("meta: windows + legacy lite fields both alias the single exe",
-      res.body.windows.name === "HistatuRunner.exe" && res.body.lite.name === "HistatuRunner.exe");
+    t("meta: tag + windows-zip name/size + linux", res.statusCode === 200 && res.body.tag === "v1.0.4"
+      && res.body.full.name === "HistatuRunner-windows.zip" && res.body.linux.size === 90000);
+    t("meta: windows + legacy lite fields both alias the windows zip",
+      res.body.windows.name === "HistatuRunner-windows.zip" && res.body.lite.name === "HistatuRunner-windows.zip");
     t("meta: no editor key in the payload", !("editor" in res.body));
   }
   // full (default) -> 302 to the signed exe URL, NOT lite
@@ -89,7 +89,7 @@ function mkRes() {
     const h = loadHandler({ GITHUB_TOKEN: "tok" }, f);
     const res = mkRes();
     await h({ query: {}, headers: {} }, res);
-    t("default -> 302 signed FULL exe", res.statusCode === 302 && res.headers.Location === "https://signed.example/1" && res.ended);
+    t("default -> 302 signed Windows zip", res.statusCode === 302 && res.headers.Location === "https://signed.example/1" && res.ended);
     const assetCall = f.calls.find(c => c.url.endsWith("/assets/1"));
     t("asset fetched as octet-stream, no auto-follow", assetCall
       && assetCall.init.redirect === "manual" && assetCall.init.headers.Accept === "application/octet-stream");
@@ -99,14 +99,35 @@ function mkRes() {
     const h = loadHandler({ GITHUB_TOKEN: "tok" }, makeFetch(RELEASE));
     const res = mkRes();
     await h({ query: { edition: "lite" }, headers: {} }, res);
-    t("legacy edition=lite -> 302 signed single exe", res.statusCode === 302 && res.headers.Location === "https://signed.example/1");
+    t("legacy edition=lite -> 302 signed Windows zip", res.statusCode === 302 && res.headers.Location === "https://signed.example/1");
   }
   // legacy ?edition=editor now falls through to the FULL build (seamless migration for old Editor.exe users)
   {
     const h = loadHandler({ GITHUB_TOKEN: "tok" }, makeFetch(RELEASE));
     const res = mkRes();
     await h({ query: { edition: "editor" }, headers: {} }, res);
-    t("legacy edition=editor -> 302 signed FULL exe (no gate)", res.statusCode === 302 && res.headers.Location === "https://signed.example/1");
+    t("legacy edition=editor -> 302 signed Windows zip (no gate)", res.statusCode === 302 && res.headers.Location === "https://signed.example/1");
+  }
+  // back-compat: an OLD release with only a legacy .exe still resolves (pre-standalone installs)
+  {
+    const legacy = { tag_name: "v1.0.4", assets: [{ name: "HistatuRunner.exe", size: 21000000, url: "https://api.github.com/assets/9" }] };
+    const h = loadHandler({ GITHUB_TOKEN: "tok" }, makeFetch(legacy));
+    const res = mkRes();
+    await h({ query: {}, headers: {} }, res);
+    t("legacy exe-only release -> 302 signed exe", res.statusCode === 302 && res.headers.Location === "https://signed.example/9");
+  }
+  // ORDER-INDEPENDENCE: a release listing the linux-src zip FIRST must still resolve the default
+  // Windows download to the windows zip (not the first .zip it sees)
+  {
+    const reordered = { tag_name: "v1.0.4", assets: [
+      { name: "HistatuRunner-linux-src.zip", size: 90000, url: "https://api.github.com/assets/L" },
+      { name: "HistatuRunner-windows.zip", size: 41700000, url: "https://api.github.com/assets/W" },
+    ] };
+    const h = loadHandler({ GITHUB_TOKEN: "tok" }, makeFetch(reordered));
+    const res = mkRes();
+    await h({ query: {}, headers: {} }, res);
+    t("windows resolves to the WINDOWS zip even when linux-src is listed first",
+      res.statusCode === 302 && res.headers.Location === "https://signed.example/W");
   }
   // linux -> the zip asset
   {

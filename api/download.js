@@ -5,7 +5,7 @@
 // update check, decoupled from GitHub UI/API details. The file itself never
 // streams through here.
 //
-// One Windows build ships per release: HistatuRunner.exe.
+// One Windows build ships per release: HistatuRunner-windows.zip (a standalone folder).
 //
 //   GET /api/download                    -> 302 to the Windows build
 //   GET /api/download?os=linux           -> 302 to the Linux source .zip
@@ -41,12 +41,14 @@ async function latestRelease(token) {
 function pickAsset(rel, kind) {
   const assets = rel.assets || [];
   if (kind === "linux") {
-    return assets.find(a => /linux|src|source/i.test(a.name) && /\.(zip|tar\.gz)$/i.test(a.name)) || null;
+    return assets.find(a => /(linux|src|source)/i.test(a.name) && /\.(zip|tar\.gz)$/i.test(a.name)) || null;
   }
-  // one Windows exe now; any edition request (incl. legacy ?edition=lite from old installs)
-  // resolves to it. Prefer a non-lite-named exe if an old release still has both.
-  const exes = assets.filter(a => /\.exe$/i.test(a.name));
-  return exes.find(a => !/lite/i.test(a.name)) || exes[0] || null;
+  // Windows is now a STANDALONE zip (HistatuRunner-windows.zip) — unzip and run the exe inside.
+  // Any edition request (incl. legacy ?edition=lite from old installs) resolves to it. Falls back
+  // to a legacy .exe if an old release still has one, so an old install's update check still works.
+  return assets.find(a => /windows/i.test(a.name) && /\.zip$/i.test(a.name))
+      || assets.find(a => /\.exe$/i.test(a.name) && !/lite/i.test(a.name))
+      || null;
 }
 
 module.exports = async (req, res) => {

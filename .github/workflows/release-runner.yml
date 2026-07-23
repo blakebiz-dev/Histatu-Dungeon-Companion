@@ -39,14 +39,17 @@ jobs:
       - name: Refresh icon
         run: python make_icon.py
 
-      - name: Build HistatuRunner.exe
+      - name: Build HistatuRunner (standalone folder)
         shell: bash
         run: |
           # single source of truth: the __version__ string in the app
           VER=$(grep -oE '__version__ = "[0-9]+\.[0-9]+\.[0-9]+"' histatu_runner.py | grep -oE '[0-9]+\.[0-9]+\.[0-9]+')
           echo "Building version $VER"
+          # --standalone (a folder of the exe + its DLLs), NOT --onefile: the onefile
+          # bootstrap unpacks a payload to temp at runtime, which is a top antivirus
+          # false-positive trigger. Shipped as a zip; users unzip and run the exe inside.
           python -m nuitka \
-            --onefile \
+            --standalone \
             --assume-yes-for-downloads \
             --enable-plugin=tk-inter \
             --windows-console-mode=disable \
@@ -62,14 +65,18 @@ jobs:
             --output-dir=build \
             histatu_runner.py
 
-      - name: Verify the exe built
-        shell: bash
+      - name: Package the Windows zip
+        shell: pwsh
         run: |
-          test -f build/HistatuRunner.exe || { echo "exe missing"; exit 1; }
-          size=$(stat -c%s build/HistatuRunner.exe)
-          echo "HistatuRunner.exe is $size bytes"
-          # a real onefile bundle is tens of MB; anything tiny means the build broke
-          test "$size" -gt 5000000 || { echo "exe suspiciously small"; exit 1; }
+          # Nuitka standalone writes build/histatu_runner.dist/ — rename to a friendly
+          # top folder so the zip unpacks to HistatuRunner/HistatuRunner.exe
+          if (-not (Test-Path build/histatu_runner.dist/HistatuRunner.exe)) { throw "exe missing in dist" }
+          if (Test-Path build/HistatuRunner) { Remove-Item build/HistatuRunner -Recurse -Force }
+          Rename-Item build/histatu_runner.dist -NewName HistatuRunner
+          Compress-Archive -Path build/HistatuRunner -DestinationPath build/HistatuRunner-windows.zip -Force
+          $z = (Get-Item build/HistatuRunner-windows.zip).Length
+          Write-Host "HistatuRunner-windows.zip is $z bytes"
+          if ($z -lt 5000000) { throw "zip suspiciously small" }
 
       - name: Package Linux source zip
         shell: pwsh
@@ -85,7 +92,7 @@ jobs:
         with:
           name: HistatuRunner-windows
           path: |
-            companion/histatu-capture/build/HistatuRunner.exe
+            companion/histatu-capture/build/HistatuRunner-windows.zip
             companion/histatu-capture/build/HistatuRunner-linux-src.zip
 
       - name: Attach to Release (tag builds only)
@@ -93,6 +100,6 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            companion/histatu-capture/build/HistatuRunner.exe
+            companion/histatu-capture/build/HistatuRunner-windows.zip
             companion/histatu-capture/build/HistatuRunner-linux-src.zip
           generate_release_notes: true

@@ -87,7 +87,7 @@ else:
         print("Note: for global key detection on Wayland, install python-evdev "
               "(pip install evdev) and add your user to the 'input' group.")
 
-__version__ = "1.0.22"
+__version__ = "1.0.23"
 
 # When packaged as a standalone .exe (Nuitka onefile / PyInstaller), __file__ points
 # inside a temporary unpack dir that's wiped on exit — config written there wouldn't
@@ -218,31 +218,7 @@ def reset_hour_from_epoch(ov):
 SITE_BASE = "https://blakebiz-dungeon-companion.vercel.app"
 UPDATE_META_URL = SITE_BASE + "/api/download?meta=1"
 DOWNLOAD_URL = SITE_BASE + "/api/download"
-APP_PAGE_URL = SITE_BASE + "/tools/dungeon-loot-map/get-app.html"
-
-
-def self_update_swap(exe_path, new_path):
-    """File mechanics of the in-place update. Windows can't overwrite a RUNNING exe but it CAN
-    rename one — so the live binary is renamed aside and the downloaded one takes its name.
-    Restores the original on any failure (never leaves no exe behind). Returns the backup path,
-    which the NEXT launch deletes."""
-    old_path = exe_path + ".old"
-    if os.path.exists(old_path):
-        os.remove(old_path)
-    os.rename(exe_path, old_path)
-    try:
-        os.rename(new_path, exe_path)
-    except Exception:
-        os.rename(old_path, exe_path)
-        raise
-    return old_path
-
-
-class _NoRedirect(urllib.request.HTTPRedirectHandler):
-    """An opener handler that does NOT auto-follow 3xx — so the download endpoint's 302 to the
-    signed asset URL is read from the Location header and fetched as a separate request."""
-    def redirect_request(self, req, fp, code, msg, headers, newurl):
-        return None
+APP_PAGE_URL = SITE_BASE + "/get-app.html"
 
 
 def parse_version(s):
@@ -3079,20 +3055,23 @@ class App:
                  font=("Segoe UI", 10, "bold")).pack(padx=16, pady=(14, 2), anchor="w")
         tk.Label(dlg, text="You have %s — latest is %s." % (__version__, tag), fg=FG3, bg=BG,
                  font=("Segoe UI", 9)).pack(padx=16, pady=(0, 2), anchor="w")
-        tk.Label(dlg, text="Update now downloads the new version and restarts the app\n"
-                           "in place (your settings stay in capture_config.json).",
+        tk.Label(dlg, text="Open the download page, get the new zip, and unzip it over this\n"
+                           "folder — your capture_config.json settings stay put.",
                  fg=FG3, bg=BG, font=("Segoe UI", 8), justify="left").pack(padx=16, anchor="w")
 
-        def download(*_):
+        def openpage(*_):
             dlg.destroy()
-            threading.Thread(target=self._self_update_bg, args=(tag, url), daemon=True).start()
+            try:
+                webbrowser.open(APP_PAGE_URL)
+            except Exception:
+                pass
 
         def skip(*_):
             self.cfg["skip_update"] = tag; save_config(self.cfg); dlg.destroy()
             self._hide_update_button()  # skipped — the button re-appears for the NEXT version
 
         btns = tk.Frame(dlg, bg=BG); btns.pack(fill="x", padx=16, pady=(10, 14))
-        self._mkbtn(btns, "⬆ Update now", download).pack(side="right")
+        self._mkbtn(btns, "⬇ Open download page", openpage).pack(side="right")
         tk.Button(btns, text="Later", command=dlg.destroy, fg=FG2, bg=FIELD, bd=0,
                   padx=9, pady=3, activebackground=RAISED, activeforeground=FG,
                   font=("Segoe UI", 9)).pack(side="right", padx=6)
@@ -3100,82 +3079,6 @@ class App:
                   activebackground=SURFACE, activeforeground=FG,
                   font=("Segoe UI", 8)).pack(side="left")
         self._place_modal(dlg, modal=False)
-
-    def _resolve_download_url(self, url):
-        """Ask our own endpoint for the download and return the URL to actually fetch from.
-        The endpoint answers with a 302 to a third-party signed URL; redirects are NOT auto-
-        followed, and the returned Location is fetched separately."""
-        headers = {"User-Agent": "HistatuRunner/" + __version__}
-        req = urllib.request.Request(url, headers=headers)
-        opener = urllib.request.build_opener(_NoRedirect)
-        try:
-            with opener.open(req, timeout=60) as r:
-                loc = r.headers.get("Location")
-                status = getattr(r, "status", None) or r.getcode()
-                if status in (301, 302, 303, 307, 308) and loc:
-                    return loc
-                return url  # no redirect (shouldn't happen) — fetch the original, keyless
-        except urllib.error.HTTPError as e:
-            loc = e.headers.get("Location") if e.headers else None
-            if e.code in (301, 302, 303, 307, 308) and loc:
-                return loc
-            raise
-
-    def _self_update_bg(self, tag, url):
-        """Download the new exe next to this one, swap names (the running binary can be renamed,
-        not overwritten), relaunch, and exit. Any failure falls back to the download page."""
-        new_path = os.path.join(APP_DIR, "HistatuRunner.new.exe")
-        try:
-            exe = os.path.abspath(sys.argv[0] or sys.executable)
-            self.set_status("⬇ Downloading %s…" % tag)
-            # Resolve the site's 302 to GitHub's signed asset URL WITHOUT following it with the
-            # editor key attached — the key gates our own endpoint only and must never ride the
-            # redirect to GitHub's CDN. So send the key just to our host, then fetch the signed
-            # URL bare.
-            dl_url = self._resolve_download_url(url)
-            req = urllib.request.Request(dl_url, headers={"User-Agent": "HistatuRunner/" + __version__})
-            with urllib.request.urlopen(req, timeout=120) as r, open(new_path, "wb") as f:
-                total = int(r.headers.get("Content-Length") or 0)
-                got = 0
-                while True:
-                    chunk = r.read(65536)
-                    if not chunk:
-                        break
-                    f.write(chunk)
-                    got += len(chunk)
-                    if total:
-                        self.set_status("⬇ Downloading %s… %d%%" % (tag, got * 100 // total))
-            if total and got != total:
-                raise RuntimeError("incomplete download (%d of %d bytes)" % (got, total))
-            if os.path.getsize(new_path) < 5000000:
-                raise RuntimeError("download too small to be the app")
-            self.set_status("Installing %s and restarting…" % tag, GOOD)
-            bak = self_update_swap(exe, new_path)
-            try:
-                # smoke-test the new binary before trusting it, then hand over
-                chk = subprocess.run([exe, "--version"], capture_output=True, timeout=60)
-                if chk.returncode != 0:
-                    raise RuntimeError("new build failed its startup check")
-                subprocess.Popen([exe], cwd=APP_DIR, close_fds=True)
-            except Exception:
-                # roll back — NEVER leave a broken binary under the app's name
-                try:
-                    os.remove(exe)
-                    os.rename(bak, exe)
-                except Exception:
-                    pass
-                raise
-            self.root.after(0, self.root.destroy)
-        except Exception as e:
-            try:
-                os.remove(new_path)
-            except Exception:
-                pass
-            self.set_status("⚠ Self-update failed (%s) — opening the download page instead" % e, WARN)
-            try:
-                webbrowser.open(APP_PAGE_URL)
-            except Exception:
-                pass
 
     def _drag_start(self, e):
         self._dragged = False
@@ -4478,13 +4381,6 @@ def main():
         print("Histatu Runner " + __version__)
         return
     make_dpi_aware()
-    if FROZEN:  # tidy up after a self-update: the previous binary was renamed aside
-        try:
-            old = os.path.abspath(sys.argv[0] or sys.executable) + ".old"
-            if os.path.exists(old):
-                os.remove(old)
-        except Exception:
-            pass  # the old instance may still be exiting — next launch gets it
     cfg = load_config()
     if "--dry-run" in sys.argv:
         # session-only override: an underscore key is never written by save_config, so one

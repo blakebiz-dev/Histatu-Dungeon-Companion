@@ -1,13 +1,14 @@
 @echo off
 rem ---------------------------------------------------------------------------
-rem Build the Histatu Runner Windows .exe with Nuitka - a single, self-contained
-rem binary (no Python needed on the user's machine).
+rem Build the Histatu Runner Windows app with Nuitka as a STANDALONE folder
+rem (the exe + its DLLs; no Python needed on the user's machine), then zip it.
 rem
-rem Usage:  build.bat            builds HistatuRunner.exe into build\
+rem Usage:  build.bat            builds build\HistatuRunner-windows.zip
 rem
-rem Nuitka (not PyInstaller) triggers fewer AV false positives. Builds are
+rem --standalone (not --onefile): the onefile bootstrap unpacks a payload to
+rem temp at runtime, which is a top antivirus false-positive trigger. Builds are
 rem UNSIGNED, so first-run SmartScreen shows "Windows protected your PC" ->
-rem "More info" -> "Run anyway". Signing needs a paid certificate.
+rem "More info" -> "Run anyway". Signing needs a certificate.
 rem ---------------------------------------------------------------------------
 setlocal enabledelayedexpansion
 cd /d "%~dp0"
@@ -25,9 +26,9 @@ for /f tokens^=2^ delims^=^" %%v in ('findstr /b /c:"__version__ = " histatu_run
 if "%VER%"=="" (echo Could not read __version__ from histatu_runner.py & goto :err)
 
 echo.
-echo == Building HistatuRunner.exe ^(v%VER%^) - this takes several minutes ==
+echo == Building HistatuRunner ^(standalone, v%VER%^) - this takes several minutes ==
 py -3 -m nuitka ^
-  --onefile ^
+  --standalone ^
   --assume-yes-for-downloads ^
   --enable-plugin=tk-inter ^
   --windows-console-mode=disable ^
@@ -44,8 +45,14 @@ py -3 -m nuitka ^
   histatu_runner.py
 if errorlevel 1 goto :err
 
+if not exist "build\histatu_runner.dist\HistatuRunner.exe" (echo Build produced no exe & goto :err)
+if exist "build\HistatuRunner" rmdir /s /q "build\HistatuRunner"
+ren "build\histatu_runner.dist" "HistatuRunner"
+powershell -NoProfile -Command "Compress-Archive -Path 'build/HistatuRunner' -DestinationPath 'build/HistatuRunner-windows.zip' -Force"
+if errorlevel 1 goto :err
+
 echo.
-echo == Done. HistatuRunner.exe is in build\ ==
+echo == Done. build\HistatuRunner-windows.zip (unzip -^> run HistatuRunner\HistatuRunner.exe) ==
 exit /b 0
 
 :err

@@ -919,51 +919,6 @@ t("off-hour passed: next is +24h", abs(ov.next_reset_epoch() - (ov.reset_overrid
 ov.reset_override = _offhour(time.time() - 3 * 86400)  # stale off-hour: back to the config model
 t("override stale: falls back to model", ov.reset_cut_ms() == hr.last_daily_reset(hour_et=20) * 1000.0)
 
-# ---------- self-update: download URL resolution ----------
-# _resolve_download_url: REAL two-server harness (endpoint 302 -> a DIFFERENT host). This drives
-# the actual _NoRedirect opener through urllib's real redirect/error machinery, proving the 302
-# Location is read from OUR endpoint and the redirect is NOT auto-followed to the CDN host during
-# resolve. (A fake opener would bypass _NoRedirect and couldn't catch a reintroduced follow.)
-import http.server as _hs, socketserver as _ss
-_hits = {"cdn_calls": 0}
-def _mkhandler(kind, redirect_to=None):
-    class _H(_hs.BaseHTTPRequestHandler):
-        def log_message(self, *a): pass
-        def do_GET(self):
-            if kind == "cdn":
-                _hits["cdn_calls"] += 1
-            if redirect_to:
-                self.send_response(302); self.send_header("Location", redirect_to); self.end_headers()
-            else:
-                self.send_response(200); self.end_headers(); self.wfile.write(b"OK")
-    return _H
-_cdn = _ss.TCPServer(("127.0.0.1", 0), _mkhandler("cdn")); _cdn_port = _cdn.server_address[1]
-_ep = _ss.TCPServer(("127.0.0.1", 0), _mkhandler("endpoint", "http://127.0.0.1:%d/signed" % _cdn_port))
-_ep_port = _ep.server_address[1]
-threading.Thread(target=_cdn.serve_forever, daemon=True).start()
-threading.Thread(target=_ep.serve_forever, daemon=True).start()
-_rs = types.SimpleNamespace(cfg={"write_key": "KEY"})
-try:
-    _loc = hr.App._resolve_download_url(_rs, "http://127.0.0.1:%d/api/download" % _ep_port)
-finally:
-    _cdn.shutdown(); _ep.shutdown()
-t("resolve dl: returns the 302 Location (signed CDN url)", _loc == "http://127.0.0.1:%d/signed" % _cdn_port)
-t("resolve dl: CDN host is NOT auto-followed during resolve", _hits["cdn_calls"] == 0)
-
-# ---------- self-update swap mechanics ----------
-_swp = _tempfile.mkdtemp()
-_exe = os.path.join(_swp, "app.exe"); _new = os.path.join(_swp, "app.new.exe")
-open(_exe, "w").write("OLD"); open(_new, "w").write("NEW")
-_bak = hr.self_update_swap(_exe, _new)
-t("swap: new binary takes the name", open(_exe).read() == "NEW")
-t("swap: old binary kept as backup", _bak.endswith(".old") and open(_bak).read() == "OLD")
-open(_exe, "w").write("CUR")
-try:
-    hr.self_update_swap(_exe, os.path.join(_swp, "missing.exe"))
-    t("swap: failure restores the original", False)
-except Exception:
-    t("swap: failure restores the original", open(_exe).read() == "CUR")
-
 # ---------- zone-review flags (in-game area vs drawn boundary) ----------
 # point_in_poly must TOGGLE on crossings (the JS twin once had a set-instead-of-toggle bug
 # that classified everything LEFT of a polygon as inside)

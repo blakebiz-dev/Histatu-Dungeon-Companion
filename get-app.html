@@ -59,16 +59,19 @@
   <div class="cards">
     <div class="card">
       <h2>🪟 Windows</h2>
-      <div class="meta" id="winMeta">single .exe — no install, no Python</div>
+      <div class="meta" id="winMeta">zip — no install, no Python</div>
       <a class="dl" id="winBtn" href="api/download">⬇ Download for Windows</a>
       <ol class="steps">
-        <li>Put <code>HistatuRunner.exe</code> in its own folder (it saves settings next to itself) and double-click it.</li>
+        <li>Unzip <code>HistatuRunner-windows.zip</code> anywhere, then run <code>HistatuRunner.exe</code>
+            inside the <code>HistatuRunner</code> folder (keep the folder together — the exe needs the files beside it).</li>
         <li>First launch shows <b>“Windows protected your PC”</b> — that's SmartScreen warning about a new unsigned
             app, not malware. Click <b>More info → Run anyway</b> (one time only).</li>
         <li>In game, press <b>F7</b> until the WORLD debug panel shows, enter your IGN in the app, and open chests.</li>
       </ol>
-      <div class="note">Nothing ever leaves your PC unless you contribute it to the shared map (chest locations,
-        your opens, travel times, run times). It never captures or uploads screenshots.</div>
+      <div class="note">A plain folder of files, not a self-extracting installer — that's deliberate, it trips far
+        fewer antivirus false positives. Nothing ever leaves your PC unless you contribute it to the shared map;
+        it never captures or uploads screenshots. To update, download the new zip and unzip it over your folder
+        (your <code>capture_config.json</code> settings stay).</div>
     </div>
 
     <div class="card">
@@ -98,8 +101,7 @@
     <b>🔓 Fully open source — don't take our word for any of this.</b>
     The complete source for the app, this website, and the server is public at
     <a href="https://github.com/blakebiz-dev/Histatu-Dungeon-Companion" style="color:var(--accent)">github.com/blakebiz-dev/Histatu-Dungeon-Companion</a>
-    (MIT licensed). The <code style="font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12.5px;background:var(--card2);border-radius:5px;padding:1px 6px">.exe</code>
-    downloads above are built automatically by GitHub Actions from that exact tagged source — you can read
+    (MIT licensed). The downloads above are built automatically by GitHub Actions from that exact tagged source — you can read
     every line the app runs (<a href="https://github.com/blakebiz-dev/Histatu-Dungeon-Companion/blob/main/companion/histatu-capture/histatu_runner.py" style="color:var(--accent)">it's one Python file</a>),
     audit the build workflow, or build it yourself.
     <br><br>
@@ -119,7 +121,7 @@
     document.getElementById("ver").textContent="latest version: "+(m.tag||"?");
     function mb(a){return a&&a.size?" · "+(a.size/1048576).toFixed(1)+" MB":"";}
     var full=m.full||m.windows;  // back-compat with the pre-editions meta shape
-    if(full)document.getElementById("winMeta").textContent="single .exe — no install, no Python"+mb(full);
+    if(full)document.getElementById("winMeta").textContent="zip — no install, no Python"+mb(full);
     if(m.linux)document.getElementById("linMeta").textContent="source zip — Python 3.10+, X11 & Wayland"+mb(m.linux);
     if(!m.linux){var b=document.getElementById("linBtn");b.classList.add("off");b.textContent="Linux zip coming with the next release";}
   }).catch(function(){
